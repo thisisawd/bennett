@@ -774,7 +774,7 @@ function renderRoundResults(state) {
   const isMap = state.question.type === 'map';
   const panel = makePanel(`ROUND ${state.index + 1} OF ${state.total} · SCORE CHECK`, isMap ? 'Who got closest?' : 'Who got it right?');
   panel.classList.add('round-results-panel');
-  const emblem = element('div', 'results-emblem', isMap ? '🎯' : '✨');
+  const emblem = element('div', 'results-emblem', isMap ? '🎯' : '📊');
   emblem.setAttribute('aria-hidden', 'true');
   panel.append(emblem);
   const correctCount = reveal.players.filter((player) => player.correct).length;

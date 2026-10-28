@@ -22,6 +22,28 @@ const shuffled = (values) => {
   }
   return order;
 };
+function mixedQuestions(count) {
+  const order = [questions[0]];
+  const remaining = questions.slice(1);
+  while (order.length < count) {
+    const recent = order.slice(-2).map((question) => question.topic);
+    const counts = new Map();
+    remaining.forEach((question) => counts.set(question.topic, (counts.get(question.topic) || 0) + 1));
+    const different = remaining.filter((question) => question.topic !== recent.at(-1));
+    // Leave enough other topics to separate the remaining questions.
+    const viable = different.filter((question) => [...counts].every(([topic, total]) => {
+      const selected = topic === question.topic;
+      const limit = selected ? Math.floor((remaining.length - 1) / 2) : Math.ceil((remaining.length - 1) / 2);
+      return total - Number(selected) <= limit;
+    }));
+    const spaced = viable.filter((question) => !recent.includes(question.topic));
+    const pool = spaced.length ? spaced : viable.length ? viable : different.length ? different : remaining;
+    const question = pool[randomInt(pool.length)];
+    order.push(question);
+    remaining.splice(remaining.indexOf(question), 1);
+  }
+  return order;
+}
 const fail = (status, message) => Object.assign(new Error(message), { status });
 function gameSettings(body, current = { roundSeconds: 10, questionCount: 20 }) {
   const roundSeconds = body.roundSeconds === undefined ? current.roundSeconds : body.roundSeconds;
@@ -156,7 +178,7 @@ function api(command, body) {
     if (room.status !== 'lobby') throw fail(409, 'This game has already started.');
     if (!room.players.length) throw fail(409, 'Wait for at least one player to join.');
     room.settings = gameSettings(body, room.settings);
-    room.questions = [questions[0], ...shuffled(questions.slice(1)).slice(0, room.settings.questionCount - 1)];
+    room.questions = mixedQuestions(room.settings.questionCount);
     room.options = room.questions.map(() => shuffled([0, 1, 2, 3]));
     room.status = 'playing';
     room.index = 0;
