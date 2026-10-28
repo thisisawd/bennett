@@ -4,43 +4,18 @@ const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomBytes, randomInt } = require('node:crypto');
+const { questions, images } = require('./questions');
+const { bounds } = require('./nh-map');
 
 const PORT = Number(process.env.PORT) || 3000;
-const QUESTION_MS = 10000;
 const ROOM_MS = 6 * 60 * 60 * 1000;
 const rooms = new Map();
 const limits = new Map();
 const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean));
 const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const portfolio = { label: "Alexander's public portfolio", url: 'https://www.behance.net/alexbennett' };
-const presenterGuide = { label: 'Microsoft Presenter+ support', url: 'https://support.microsoft.com/en-us/surface/accessories/certified/use-microsoft-presenter-in-microsoft-teams' };
-const garbagePlateGuide = { label: 'Visit Rochester: the Garbage Plate', url: 'https://www.visitrochester.com/restaurants/the-garbage-plate/' };
-const questions = [
-  { category: 'Meet the designer', prompt: 'Which design discipline does Alexander list in his Microsoft role?', answers: ['Industrial design', 'Landscape architecture', 'Fashion design', 'Editorial design'], correct: 0, explanation: 'His public portfolio lists Industrial Designer at Microsoft: physical products, not just pixels.', source: portfolio },
-  { category: 'Inside Microsoft', prompt: 'Which Microsoft team does Alex name in his public bio?', answers: ['Xbox game publishing', 'Devices', 'Azure networking', 'Bing advertising'], correct: 1, explanation: 'Alex describes himself as an industrial designer on Microsoft’s devices team.', source: portfolio },
-  { category: 'The Rochester connection', prompt: 'Alex calls himself an “RIT ID Alum.” What does RIT stand for?', answers: ['Rhode Island Technical', 'Richmond Institute of Technology', 'Rochester Institute of Technology', 'Royal Institute of Typography'], correct: 2, explanation: 'RIT is Rochester Institute of Technology. His portfolio explicitly identifies him as an industrial design alum.', source: portfolio },
-  { category: 'Prototype mode', prompt: 'What two ingredients does Alex say he uses to “prototype the future”?', answers: ['Clay and watercolor', 'Spreadsheets and surveys', 'Film and photography', 'Electronics and code'], correct: 3, explanation: 'His own bio says “using electronics and code to prototype the future.”', source: portfolio },
-  { category: 'Product spotlight', prompt: 'Which Microsoft product has its own project in Alex’s public portfolio?', answers: ['Microsoft Presenter+', 'Surface Studio 2+', 'Xbox Adaptive Controller', 'HoloLens 2'], correct: 0, explanation: 'Microsoft Presenter+ is a named project in Alex’s portfolio. That is a documented connection, not a guess based on his employer.', source: portfolio },
-  { category: 'Behind the scenes', prompt: 'Which project title appears alongside Presenter+ in Alex’s portfolio?', answers: ['Datacenter Cooling', 'Hardware Prototyping', 'Flight Simulator Cockpit', 'Quantum Computing'], correct: 1, explanation: '“Hardware Prototyping” is another project listed in his public portfolio.', source: portfolio },
-  { category: 'Beyond the day job', prompt: 'Which watch project is listed in Alex’s portfolio?', answers: ['Pixel Watch', 'Apple Watch Ultra', 'Second Surface Watch', 'Galaxy Watch'], correct: 2, explanation: 'The portfolio title is “Second Surface Watch.” A portfolio title is not evidence that he designed a shipped Microsoft watch.', source: portfolio },
-  { category: 'Take a seat', prompt: 'Which furniture project is part of Alex’s public design portfolio?', answers: ['Gesture Chair', 'Aeron Chair', 'Embody Chair', 'Invitation Chair'], correct: 3, explanation: '“Invitation Chair” appears in his portfolio: the work extends beyond electronics.', source: portfolio },
-  { category: 'Rochester food break', prompt: 'What is Rochester’s famous Garbage Plate?', answers: ['Burgers or hots over sides like macaroni salad and home fries, with meat hot sauce', 'A cold seafood platter with cocktail sauce', 'A breakfast stack of pancakes and fruit', 'A pizza topped with pasta and cheese'], correct: 0, explanation: 'A traditional Garbage Plate layers a protein such as cheeseburgers or hots over sides such as macaroni salad and home fries, usually topped with Rochester-style meat hot sauce. Combinations vary. This is Rochester food trivia, not a claim about Alex’s favorite meal.', source: garbagePlateGuide },
-  { category: 'Rochester · The original', prompt: 'Which Rochester restaurant is home to the original Garbage Plate?', answers: ['Dog Town Hots', 'Nick Tahou Hots', 'Dinosaur Bar-B-Que', 'Genesee Brew House'], correct: 1, explanation: 'Nick Tahou Hots originated the Garbage Plate and trademarked the name. Other Rochester restaurants serve their own versions under different names.', source: garbagePlateGuide },
-  { category: 'Presenter+ · Meeting room', prompt: 'Presenter+ is a certified remote for which Microsoft app?', answers: ['Outlook', 'OneNote', 'Microsoft Teams', 'Microsoft Whiteboard'], correct: 2, explanation: 'Microsoft describes Presenter+ as a Certified for Microsoft Teams remote for work or school meetings and calls.', source: presenterGuide },
-  { category: 'Presenter+ · Cut the cord', prompt: 'How does Presenter+ pair with a Windows PC or Mac?', answers: ['NFC only', 'Wi-Fi Direct', 'An infrared receiver', 'Bluetooth'], correct: 3, explanation: 'Microsoft’s setup instructions start with Bluetooth pairing on a Windows 10/11 PC or Mac.', source: presenterGuide },
-  { category: 'Presenter+ · Slide into it', prompt: 'Which Teams feature lets you present slides with Presenter+?', answers: ['PowerPoint Live', 'Excel Live', 'Together mode', 'Loop components'], correct: 0, explanation: 'The documented presentation workflow is Share → PowerPoint Live in a Teams meeting.', source: presenterGuide },
-  { category: 'Presenter+ · You’re on mute', prompt: 'The Presenter+ mute button is solid red. What does that mean?', answers: ['Your hand is raised', 'Your microphone is muted', 'The next slide is loading', 'The pointer is active'], correct: 1, explanation: 'Solid red means muted; solid white means unmuted. The physical button makes microphone state visible.', source: presenterGuide },
-  { category: 'Presenter+ · Quick contribution', prompt: 'You’re muted and want to speak briefly. What should you do?', answers: ['Double-tap Next', 'Hold the pointer button', 'Hold Mute while speaking, then release', 'Hold Back and Next together'], correct: 2, explanation: 'Holding Mute temporarily unmutes you. Releasing it mutes you again: a physical push-to-talk interaction.', source: presenterGuide },
-  { category: 'Presenter+ · Hands up', prompt: 'Which action raises or lowers your hand during a Teams meeting?', answers: ['Double-tap Mute', 'Hold Next', 'Shake the remote', 'Press and hold the Teams button'], correct: 3, explanation: 'Press and hold the Teams button to raise your hand; repeat to lower it.', source: presenterGuide },
-  { category: 'Presenter+ · Point taken', prompt: 'How do you activate the pointer while presenting in PowerPoint Live?', answers: ['Hold the laser pointer button', 'Double-tap Back', 'Hold Mute', 'Press the Teams button once'], correct: 0, explanation: 'Press and hold the laser pointer button, then point to the area on the slide you want to discuss.', source: presenterGuide },
-  { category: 'Presenter+ · Keep it moving', prompt: 'Which controls move between slides in PowerPoint Live?', answers: ['Mute and Teams', 'Back and Next', 'Volume up and down', 'A scroll wheel'], correct: 1, explanation: 'The remote has dedicated Back and Next buttons for navigating presentation slides.', source: presenterGuide },
-  { category: 'Presenter+ · Make it yours', prompt: 'Which app customizes Presenter+ buttons and pointer settings?', answers: ['Microsoft Designer', 'Surface app', 'Microsoft Accessory Center', 'Windows Media Player'], correct: 2, explanation: 'Microsoft Accessory Center provides button, pointer, and other settings for Presenter+.', source: presenterGuide },
-  { category: 'Presenter+ · Platform twist', prompt: 'Presenter+ pairs with Macs, but its Accessory Center app requires what?', answers: ['Android', 'iPadOS', 'ChromeOS', 'Windows 10 or 11'], correct: 3, explanation: 'The Microsoft Accessory Center app runs on Windows 10/11 and is not available for macOS. Pairing support and customization support are different things.', source: presenterGuide },
-];
-
 const token = () => randomBytes(24).toString('hex');
-const shuffledOptions = () => {
-  const order = [0, 1, 2, 3];
+const shuffled = (values) => {
+  const order = [...values];
   for (let index = order.length - 1; index > 0; index--) {
     const swap = randomInt(index + 1);
     [order[index], order[swap]] = [order[swap], order[index]];
@@ -48,6 +23,13 @@ const shuffledOptions = () => {
   return order;
 };
 const fail = (status, message) => Object.assign(new Error(message), { status });
+function gameSettings(body, current = { roundSeconds: 10, questionCount: 20 }) {
+  const roundSeconds = body.roundSeconds === undefined ? current.roundSeconds : body.roundSeconds;
+  const questionCount = body.questionCount === undefined ? current.questionCount : body.questionCount;
+  if (!Number.isInteger(roundSeconds) || roundSeconds < 5 || roundSeconds > 120) throw fail(400, 'Choose a whole number of seconds between 5 and 120.');
+  if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > questions.length) throw fail(400, `Choose a whole number of questions between 1 and ${questions.length}.`);
+  return { roundSeconds, questionCount };
+}
 const getRoom = (body) => {
   const room = rooms.get(body.code);
   if (!room || Date.now() - room.createdAt > ROOM_MS) throw fail(404, 'That game was not found or has expired. Ask your host for a new code.');
@@ -64,13 +46,37 @@ const getPlayer = (room, body) => {
   return player;
 };
 
+function distanceKm(first, second) {
+  const radians = (degrees) => degrees * Math.PI / 180;
+  const lat = radians(second.lat - first.lat);
+  const lng = radians(second.lng - first.lng);
+  const arc = Math.sin(lat / 2) ** 2 + Math.cos(radians(first.lat)) * Math.cos(radians(second.lat)) * Math.sin(lng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(arc), Math.sqrt(Math.max(0, 1 - arc)));
+}
+
 function updateRound(room, now = Date.now()) {
   if (room.status !== 'playing' || now < room.deadline) return;
-  const correctAnswer = room.options[room.index].indexOf(questions[room.index].correct);
+  const question = room.questions[room.index];
+  if (question.type === 'map') {
+    const answers = room.players.map((player) => player.answers[room.index]).filter(Boolean);
+    answers.forEach((answer) => { answer.distanceKm = distanceKm(answer.selected, question.target); });
+    const closest = Math.min(...answers.map((answer) => answer.distanceKm));
+    room.players.forEach((player) => {
+      const answer = player.answers[room.index];
+      if (!answer) return;
+      answer.closest = Math.abs(answer.distanceKm - closest) < .000001;
+      answer.points = answer.closest ? 1000 : Math.min(999, Math.round(1000 * Math.exp(-(answer.distanceKm - closest) / 75)));
+      player.score += answer.points;
+      if (answer.closest) player.correct++;
+    });
+    room.status = 'reveal';
+    return;
+  }
+  const correctAnswer = room.options[room.index].indexOf(question.correct);
   room.players.forEach((player) => {
     const answer = player.answers[room.index];
     if (answer?.selected === correctAnswer) {
-      answer.points = 600 + Math.round(400 * Math.max(0, 1 - answer.elapsed / QUESTION_MS));
+      answer.points = 600 + Math.round(400 * Math.max(0, 1 - answer.elapsed / (room.settings.roundSeconds * 1000)));
       player.score += answer.points;
       player.correct++;
     }
@@ -82,21 +88,24 @@ function publicState(room, body) {
   updateRound(room);
   const host = body.token === room.hostToken;
   const player = host ? null : getPlayer(room, body);
-  const state = { code: room.code, role: host ? 'host' : 'player', status: room.status, total: questions.length, index: room.index };
+  const state = { code: room.code, role: host ? 'host' : 'player', status: room.status, total: room.settings.questionCount, bankSize: questions.length, settings: room.settings, index: room.index };
   state.players = room.players.map((entry) => ({ name: entry.name, avatar: entry.avatar, answered: Boolean(entry.answers[room.index]) }));
   if (player) {
     state.player = { name: player.name, avatar: player.avatar, score: player.score, correct: player.correct, selected: player.answers[room.index]?.selected ?? null };
   }
   if (room.status === 'playing' || room.status === 'reveal') {
-    const { prompt, answers, category, explanation, source } = questions[room.index];
-    state.question = { prompt, answers: room.options[room.index].map((index) => answers[index]), category, remainingMs: Math.max(0, room.deadline - Date.now()) };
+    const { type = 'choice', prompt, answers, category, explanation, source, image, revealImage, target } = room.questions[room.index];
+    state.question = { type, prompt, category, remainingMs: Math.max(0, room.deadline - Date.now()) };
+    if (type === 'choice') state.question.answers = room.options[room.index].map((index) => answers[index]);
+    if (!revealImage) state.question.image = images[image];
     if (room.status === 'reveal') {
-      const correctAnswer = room.options[room.index].indexOf(questions[room.index].correct);
+      const correctAnswer = type === 'map' ? null : room.options[room.index].indexOf(room.questions[room.index].correct);
       state.reveal = {
-        correctAnswer, explanation, source,
+        correctAnswer, explanation, source, target,
+        image: revealImage ? images[image] : undefined,
         players: room.players.map((entry) => {
           const answer = entry.answers[room.index];
-          return { name: entry.name, avatar: entry.avatar, selected: answer?.selected ?? null, correct: answer?.selected === correctAnswer, points: answer?.points || 0, score: entry.score };
+          return { name: entry.name, avatar: entry.avatar, selected: answer?.selected ?? null, correct: type === 'map' ? Boolean(answer?.closest) : answer?.selected === correctAnswer, distanceKm: answer?.distanceKm, points: answer?.points || 0, score: entry.score };
         }),
       };
     }
@@ -117,7 +126,7 @@ function api(command, body) {
     if (rooms.size >= 300) throw fail(503, 'All game rooms are busy. Please try again shortly.');
     let code;
     do { code = Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join(''); } while (rooms.has(code));
-    const room = { code, hostToken: token(), status: 'lobby', players: [], createdAt: Date.now(), index: -1, deadline: null, options: questions.map(shuffledOptions) };
+    const room = { code, hostToken: token(), status: 'lobby', players: [], createdAt: Date.now(), index: -1, deadline: null, settings: gameSettings(body), questions: [], options: [] };
     rooms.set(code, room);
     return { code, token: room.hostToken };
   }
@@ -126,7 +135,7 @@ function api(command, body) {
     if (room.status !== 'lobby') throw fail(409, 'This game has already started. Ask your host to create a new room for the next round.');
     if (room.players.length >= 100) throw fail(409, 'This room is full (100 players). Ask your host to create another game.');
     if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 24 || /[\u0000-\u001f\u007f]/.test(body.name)) throw fail(400, 'Enter a name between 1 and 24 characters, without control characters.');
-    if (!Number.isInteger(body.avatar) || body.avatar < 0 || body.avatar > 5) throw fail(400, 'Choose one of the six emoji avatars.');
+    if (!Number.isInteger(body.avatar) || body.avatar < 0 || body.avatar >= 26) throw fail(400, 'Choose an emoji avatar from the row or More dropdown.');
     const name = body.name.trim();
     if (room.players.some((player) => player.name.toLocaleLowerCase() === name.toLocaleLowerCase())) throw fail(409, 'Someone is already using that name. Add an initial or choose a nickname.');
     const player = { token: token(), name, avatar: body.avatar, score: 0, correct: 0, joinedAt: Date.now(), answers: [] };
@@ -134,13 +143,22 @@ function api(command, body) {
     return { token: player.token };
   }
   if (command === 'state') return publicState(getRoom(body), body);
+  if (command === 'settings') {
+    const room = getHost(body);
+    if (room.status !== 'lobby') throw fail(409, 'Game settings are locked once the game starts.');
+    room.settings = gameSettings(body, room.settings);
+    return { settings: room.settings };
+  }
   if (command === 'start') {
     const room = getHost(body);
     if (room.status !== 'lobby') throw fail(409, 'This game has already started.');
     if (!room.players.length) throw fail(409, 'Wait for at least one player to join.');
+    room.settings = gameSettings(body, room.settings);
+    room.questions = [questions[0], ...shuffled(questions.slice(1)).slice(0, room.settings.questionCount - 1)];
+    room.options = room.questions.map(() => shuffled([0, 1, 2, 3]));
     room.status = 'playing';
     room.index = 0;
-    room.deadline = Date.now() + QUESTION_MS;
+    room.deadline = Date.now() + room.settings.roundSeconds * 1000;
     return { ok: true };
   }
   if (command === 'answer') {
@@ -148,23 +166,28 @@ function api(command, body) {
     const player = getPlayer(room, body);
     const now = Date.now();
     updateRound(room, now);
-    if (!Number.isInteger(body.index) || body.index < 0 || body.index >= questions.length) throw fail(400, 'That question is not valid.');
-    if (!Number.isInteger(body.answer) || body.answer < 0 || body.answer > 3) throw fail(400, 'Choose one of the four answers.');
+    if (!Number.isInteger(body.index) || body.index < 0 || body.index >= room.settings.questionCount) throw fail(400, 'That question is not valid.');
     if (body.index !== room.index) throw fail(409, 'The host has moved to another question. Reconnecting to the live round.');
+    const isMap = room.questions[room.index]?.type === 'map';
+    if (isMap) {
+      const point = body.location;
+      if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng) || point.lat < bounds.south || point.lat > bounds.north || point.lng < bounds.west || point.lng > bounds.east) throw fail(400, 'Place a pin within the displayed New Hampshire map.');
+    } else if (!Number.isInteger(body.answer) || body.answer < 0 || body.answer > 3) throw fail(400, 'Choose one of the four answers.');
     if (player.answers[room.index]) return { accepted: true, selected: player.answers[room.index].selected };
     if (room.status !== 'playing') throw fail(409, 'Answers are closed. Wait for the host to start the next question.');
-    player.answers[room.index] = { selected: body.answer, elapsed: QUESTION_MS - (room.deadline - now), points: 0 };
-    return { accepted: true, selected: body.answer };
+    const selected = isMap ? { lat: body.location.lat, lng: body.location.lng } : body.answer;
+    player.answers[room.index] = { selected, elapsed: room.settings.roundSeconds * 1000 - (room.deadline - now), points: 0 };
+    return { accepted: true, selected };
   }
   if (command === 'next') {
     const room = getHost(body);
     updateRound(room);
     if (body.index !== room.index || room.status !== 'reveal') throw fail(409, 'Wait for this round to finish, or reconnect to the current question.');
-    if (room.index === questions.length - 1) room.status = 'finished';
+    if (room.index === room.questions.length - 1) room.status = 'finished';
     else {
       room.index++;
       room.status = 'playing';
-      room.deadline = Date.now() + QUESTION_MS;
+      room.deadline = Date.now() + room.settings.roundSeconds * 1000;
     }
     return { ok: true };
   }
@@ -182,7 +205,11 @@ const staticFiles = new Map([
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/config.js', ['config.js', 'text/javascript; charset=utf-8']],
+  ['/nh-map.js', ['nh-map.js', 'text/javascript; charset=utf-8']],
 ]);
+for (const image of Object.values(images)) {
+  staticFiles.set(image.src, [path.join('images', path.basename(image.src)), image.src.endsWith('.png') ? 'image/png' : 'image/jpeg']);
+}
 const server = http.createServer(async (request, response) => {
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('Referrer-Policy', 'same-origin');
@@ -231,7 +258,7 @@ const server = http.createServer(async (request, response) => {
     const file = staticFiles.get(url.pathname);
     if (!file) throw fail(404, 'That page was not found.');
     const content = await fs.readFile(path.join(__dirname, file[0]));
-    response.writeHead(200, { 'Content-Type': file[1], 'Cache-Control': 'no-cache' });
+    response.writeHead(200, { 'Content-Type': file[1], 'Cache-Control': file[1].startsWith('image/') ? 'public, max-age=86400' : 'no-cache' });
     response.end(request.method === 'HEAD' ? undefined : content);
   } catch (error) {
     if (!response.headersSent) send(response, error.status || 500, { error: error.status ? error.message : 'The game server had a problem. Your input is preserved; please retry.' });
