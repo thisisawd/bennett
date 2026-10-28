@@ -93,21 +93,23 @@ function publicState(room, body) {
   if (player) {
     state.player = { name: player.name, avatar: player.avatar, score: player.score, correct: player.correct, selected: player.answers[room.index]?.selected ?? null };
   }
-  if (room.status === 'playing' || room.status === 'reveal') {
+  if (['playing', 'reveal', 'results'].includes(room.status)) {
     const { type = 'choice', prompt, answers, category, explanation, source, image, revealImage, target } = room.questions[room.index];
     state.question = { type, prompt, category, remainingMs: Math.max(0, room.deadline - Date.now()) };
     if (type === 'choice') state.question.answers = room.options[room.index].map((index) => answers[index]);
     if (!revealImage) state.question.image = images[image];
-    if (room.status === 'reveal') {
+    if (room.status === 'reveal' || room.status === 'results') {
       const correctAnswer = type === 'map' ? null : room.options[room.index].indexOf(room.questions[room.index].correct);
       state.reveal = {
         correctAnswer, explanation, source, target,
         image: revealImage ? images[image] : undefined,
-        players: room.players.map((entry) => {
+      };
+      if (room.status === 'results') {
+        state.reveal.players = room.players.map((entry) => {
           const answer = entry.answers[room.index];
           return { name: entry.name, avatar: entry.avatar, selected: answer?.selected ?? null, correct: type === 'map' ? Boolean(answer?.closest) : answer?.selected === correctAnswer, distanceKm: answer?.distanceKm, points: answer?.points || 0, score: entry.score };
-        }),
-      };
+        });
+      }
     }
   }
   if (room.status === 'finished') {
@@ -135,7 +137,7 @@ function api(command, body) {
     if (room.status !== 'lobby') throw fail(409, 'This game has already started. Ask your host to create a new room for the next round.');
     if (room.players.length >= 100) throw fail(409, 'This room is full (100 players). Ask your host to create another game.');
     if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 24 || /[\u0000-\u001f\u007f]/.test(body.name)) throw fail(400, 'Enter a name between 1 and 24 characters, without control characters.');
-    if (!Number.isInteger(body.avatar) || body.avatar < 0 || body.avatar >= 26) throw fail(400, 'Choose an emoji avatar from the row or More dropdown.');
+    if (!Number.isInteger(body.avatar) || body.avatar < 0 || body.avatar >= 26) throw fail(400, 'Choose an emoji avatar from the row or the arrow dropdown.');
     const name = body.name.trim();
     if (room.players.some((player) => player.name.toLocaleLowerCase() === name.toLocaleLowerCase())) throw fail(409, 'Someone is already using that name. Add an initial or choose a nickname.');
     const player = { token: token(), name, avatar: body.avatar, score: 0, correct: 0, joinedAt: Date.now(), answers: [] };
@@ -179,10 +181,16 @@ function api(command, body) {
     player.answers[room.index] = { selected, elapsed: room.settings.roundSeconds * 1000 - (room.deadline - now), points: 0 };
     return { accepted: true, selected };
   }
-  if (command === 'next') {
+  if (command === 'results') {
     const room = getHost(body);
     updateRound(room);
     if (body.index !== room.index || room.status !== 'reveal') throw fail(409, 'Wait for this round to finish, or reconnect to the current question.');
+    room.status = 'results';
+    return { ok: true };
+  }
+  if (command === 'next') {
+    const room = getHost(body);
+    if (body.index !== room.index || room.status !== 'results') throw fail(409, 'Show the player results before starting the next question. Reconnect if the host has already moved on.');
     if (room.index === room.questions.length - 1) room.status = 'finished';
     else {
       room.index++;
@@ -208,6 +216,7 @@ const staticFiles = new Map([
   ['/nh-map.js', ['nh-map.js', 'text/javascript; charset=utf-8']],
 ]);
 for (const image of Object.values(images)) {
+  if (!image.src.startsWith('/images/')) continue;
   staticFiles.set(image.src, [path.join('images', path.basename(image.src)), image.src.endsWith('.png') ? 'image/png' : 'image/jpeg']);
 }
 const server = http.createServer(async (request, response) => {

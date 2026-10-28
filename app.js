@@ -43,6 +43,7 @@ let audioContext;
 let musicTimer;
 let musicGain;
 let musicStep = 0;
+let musicNoise;
 let soundChosen = false;
 let roundEndsAt = 0;
 let pendingAnswer = null;
@@ -82,11 +83,11 @@ avatars.slice(0, 5).forEach(({ emoji, name }, index) => {
   $('#avatar-options').append(choice);
 });
 const moreAvatars = element('div', 'avatar-choice avatar-more');
-const moreLabel = element('label', 'avatar-more-label', 'More');
+const moreLabel = element('label', 'sr-only', 'More emoji avatars');
 moreLabel.htmlFor = 'more-avatars';
 const avatarSelect = element('select', 'avatar-select');
 avatarSelect.id = 'more-avatars';
-const placeholder = element('option', '', '+');
+const placeholder = element('option', '', '▾');
 placeholder.value = '';
 placeholder.disabled = true;
 placeholder.selected = true;
@@ -103,29 +104,61 @@ avatarSelect.addEventListener('change', () => {
 moreAvatars.append(moreLabel, avatarSelect);
 $('#avatar-options').append(moreAvatars);
 
+const noteFrequency = (note) => 440 * 2 ** ((note - 69) / 12);
+
+function synthNote(note, start, duration, volume, type, output, slideTo) {
+  const oscillator = audioContext.createOscillator();
+  const envelope = audioContext.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(noteFrequency(note), start);
+  if (slideTo !== undefined) oscillator.frequency.exponentialRampToValueAtTime(noteFrequency(slideTo), start + duration * .7);
+  envelope.gain.setValueAtTime(0, start);
+  envelope.gain.linearRampToValueAtTime(volume, start + .012);
+  envelope.gain.exponentialRampToValueAtTime(.0001, start + duration);
+  oscillator.connect(envelope).connect(output);
+  oscillator.onended = () => { oscillator.disconnect(); envelope.disconnect(); };
+  oscillator.start(start);
+  oscillator.stop(start + duration + .02);
+}
+
+function synthPercussion(start, snare, output) {
+  if (!musicNoise) {
+    musicNoise = audioContext.createBuffer(1, Math.floor(audioContext.sampleRate * .15), audioContext.sampleRate);
+    const samples = musicNoise.getChannelData(0);
+    for (let index = 0; index < samples.length; index++) samples[index] = Math.random() * 2 - 1;
+  }
+  const source = audioContext.createBufferSource();
+  const filter = audioContext.createBiquadFilter();
+  const envelope = audioContext.createGain();
+  source.buffer = musicNoise;
+  filter.type = 'highpass';
+  filter.frequency.value = snare ? 1200 : 6500;
+  const duration = snare ? .13 : .04;
+  envelope.gain.setValueAtTime(snare ? .17 : .045, start);
+  envelope.gain.exponentialRampToValueAtTime(.0001, start + duration);
+  source.connect(filter).connect(envelope).connect(output);
+  source.onended = () => { source.disconnect(); filter.disconnect(); envelope.disconnect(); };
+  source.start(start);
+  source.stop(start + duration);
+}
+
+function soundUnavailable(message) {
+  stopMusic();
+  soundEnabled = false;
+  updateSoundButton();
+  announce(message);
+}
+
 function playTone(kind) {
-  if (!soundEnabled) return;
+  if (!soundEnabled || document.hidden) return;
   try {
     audioContext ??= new (window.AudioContext || window.webkitAudioContext)();
-    audioContext.resume();
-    const notes = kind === 'win' ? [523, 659, 784, 1047] : kind === 'correct' ? [523, 784] : kind === 'wrong' ? [247, 196] : [440];
-    notes.forEach((frequency, index) => {
-      const oscillator = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      const start = audioContext.currentTime + index * .13;
-      oscillator.type = 'sine';
-      oscillator.frequency.value = frequency;
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(.055, start + .015);
-      gain.gain.exponentialRampToValueAtTime(.001, start + .24);
-      oscillator.connect(gain).connect(audioContext.destination);
-      oscillator.start(start);
-      oscillator.stop(start + .25);
-    });
+    audioContext.resume().catch(() => soundUnavailable('Sound could not start. You can still play without it.'));
+    const notes = kind === 'win' ? [72, 76, 79, 84, 83, 84] : kind === 'correct' ? [72, 76, 79, 84] : kind === 'wrong' ? [64, 60] : kind === 'reveal' ? [67, 72, 76] : [72];
+    notes.forEach((note, index) => synthNote(note, audioContext.currentTime + index * .09, .2, .035, 'sine', audioContext.destination));
+    if (kind === 'win') [60, 64, 67].forEach((note) => synthNote(note, audioContext.currentTime + .45, .55, .025, 'triangle', audioContext.destination));
   } catch {
-    soundEnabled = false;
-    updateSoundButton();
-    announce('Sound is unavailable in this browser. You can still play without it.');
+    soundUnavailable('Sound is unavailable in this browser. You can still play without it.');
   }
 }
 
@@ -148,44 +181,48 @@ function startMusic() {
   if (!soundEnabled || musicTimer || document.hidden) return;
   try {
     audioContext ??= new (window.AudioContext || window.webkitAudioContext)();
-    audioContext.resume().catch(() => {
-      stopMusic();
-      soundEnabled = false;
-      updateSoundButton();
-      announce('Music could not start. You can continue playing without it.');
-    });
     musicGain = audioContext.createGain();
-    musicGain.gain.value = .025;
+    musicGain.gain.value = currentState?.status === 'playing' ? .028 : .05;
     musicGain.connect(audioContext.destination);
-    const melody = [523.25, 659.25, 783.99, 659.25, 587.33, 698.46, 880, 698.46, 659.25, 783.99, 1046.5, 783.99, 587.33, 698.46, 783.99, 587.33];
-    const bass = [130.81, 146.83, 164.81, 146.83];
     const output = musicGain;
-    const beat = () => {
-      const start = audioContext.currentTime;
-      const notes = [melody[musicStep % melody.length]];
-      if (musicStep % 2 === 0) notes.push(bass[Math.floor(musicStep / 4) % bass.length]);
-      notes.forEach((frequency, index) => {
-        const oscillator = audioContext.createOscillator();
-        const envelope = audioContext.createGain();
-        oscillator.type = index ? 'sine' : 'triangle';
-        oscillator.frequency.value = frequency;
-        envelope.gain.setValueAtTime(0, start);
-        envelope.gain.linearRampToValueAtTime(.8, start + .02);
-        envelope.gain.exponentialRampToValueAtTime(.001, start + .27);
-        oscillator.connect(envelope).connect(output);
-        oscillator.onended = () => { oscillator.disconnect(); envelope.disconnect(); };
-        oscillator.start(start);
-        oscillator.stop(start + .3);
-      });
-      musicStep++;
+    audioContext.resume().catch(() => {
+      if (musicGain === output) soundUnavailable('Music could not start. You can continue playing without it.');
+    });
+    const chords = [[60, 64, 67, 71], [57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 65], [60, 64, 67, 71], [62, 65, 69, 72], [53, 57, 60, 64], [55, 59, 62, 67]];
+    const melody = [
+      [76, null, 79, 81, 79, 76, 74, null], [72, 76, null, 79, 76, 72, 71, null],
+      [77, null, 81, 79, 77, 76, 72, null], [74, 79, null, 77, 74, 71, 67, null],
+      [76, 79, 84, null, 83, 79, 76, 74], [77, null, 81, 84, 81, 77, 74, null],
+      [77, 81, null, 84, 81, 79, 77, 76], [74, 71, 67, null, 71, 74, 79, null],
+    ];
+    const stepDuration = 60 / 118 / 2;
+    let nextAt = audioContext.currentTime + .04;
+    musicStep = 0;
+    const schedule = () => {
+      if (audioContext.state === 'suspended') { nextAt = audioContext.currentTime + .04; return; }
+      try {
+        if (nextAt < audioContext.currentTime) nextAt = audioContext.currentTime + .02;
+        while (nextAt < audioContext.currentTime + .12) {
+          const bar = Math.floor(musicStep / 8) % chords.length;
+          const step = musicStep % 8;
+          const chord = chords[bar];
+          if (step === 0) chord.forEach((note) => synthNote(note, nextAt, 1.65, .065, 'sine', output));
+          if (step % 2 === 0) synthNote(chord[step === 4 ? 2 : 0] - 24, nextAt, .23, .32, 'triangle', output);
+          if (melody[bar][step] !== null) synthNote(melody[bar][step], nextAt, .18, .19, 'triangle', output);
+          if (step % 4 === 0) synthNote(47, nextAt, .16, .5, 'sine', output, 29);
+          synthPercussion(nextAt, false, output);
+          if (step % 4 === 2) synthPercussion(nextAt, true, output);
+          musicStep++;
+          nextAt += stepDuration;
+        }
+      } catch {
+        soundUnavailable('Music stopped because audio is unavailable. The game still works; use Music to retry.');
+      }
     };
-    beat();
-    musicTimer = setInterval(beat, 300);
+    musicTimer = setInterval(schedule, 35);
+    schedule();
   } catch {
-    stopMusic();
-    soundEnabled = false;
-    updateSoundButton();
-    announce('Music is unavailable in this browser. You can still play without it.');
+    soundUnavailable('Music is unavailable in this browser. You can still play without it.');
   }
 }
 
@@ -404,7 +441,9 @@ function renderState(state) {
     return;
   }
   renderKey = key;
+  if (musicGain) musicGain.gain.setTargetAtTime(state.status === 'playing' ? .028 : .05, audioContext.currentTime, .15);
   if (state.status === 'finished') return renderResults(state);
+  if (state.status === 'results') return renderRoundResults(state);
   if (state.status === 'lobby' && state.role === 'host') return renderHost(state);
   if (state.status === 'lobby') return renderPlayerLobby(state);
   renderQuestion(state);
@@ -456,7 +495,7 @@ function renderHost(state) {
 function updateLobbyRules(state) {
   const rules = $('#lobby-rules');
   if (!rules) return;
-  const text = `${state.settings.questionCount} questions from a bank of ${state.bankSize} · ${state.settings.roundSeconds} seconds per answer. First, pin Alex’s hometown on a New Hampshire map; the rest are shuffled with no repeats. The closest pin gets 1,000 points; other pins earn less with distance. Everyone shares the same rounds. Answers stay private until time runs out; the host controls Next. Personal facts come from the host; other trivia has linked sources. Rooms expire after 6 hours; restarting the server clears games.`;
+  const text = `${state.settings.questionCount} questions from a bank of ${state.bankSize} · ${state.settings.roundSeconds} seconds per answer. First, pin Alex’s hometown on a New Hampshire map; the rest are shuffled with no repeats. The closest pin gets 1,000 points; other pins earn less with distance. Everyone shares the same rounds. When time ends, see the answer; the host clicks Next to show player results, then Next again for the following question. Personal facts come from the host; other trivia has linked sources. Rooms expire after 6 hours; restarting the server clears games.`;
   if (rules.textContent !== text) rules.textContent = text;
 }
 
@@ -584,7 +623,6 @@ async function hostAction(command) {
   try {
     await request(command, { ...session, ...settings, index: currentState.index });
     await pollState();
-    playTone(command === 'start' ? 'correct' : 'win');
   } catch (error) {
     showConnectionError(error.message);
   } finally {
@@ -603,7 +641,7 @@ function renderPlayerLobby(state) {
   rules.setAttribute('role', 'status');
   panel.append(rules);
   updateLobbyRules(state);
-  panel.append(element('p', 'muted centered', 'An original upbeat loop plays after you join. Use Music in the header to mute it at any time.'));
+  panel.append(element('p', 'muted centered', 'An original quiz-night groove plays after you join: melody, warm chords, bass and drums. It gets quieter during questions. Use Music in the header to mute it.'));
   announce('You joined the game. Waiting for the host to start.');
 }
 
@@ -615,7 +653,7 @@ function renderQuestion(state) {
   const top = element('div', 'panel-top');
   const badge = element('div', 'player-badge');
   badge.append(element('span', '', state.role === 'host' ? '📡' : avatars[state.player.avatar].emoji), element('span', '', state.role === 'host' ? 'Host · Share this screen' : state.player.name));
-  const score = element('span', 'score-pill', state.role === 'host' ? `Room ${state.code}` : `${state.player.score.toLocaleString()} pts`);
+  const score = element('span', 'score-pill', revealing ? 'Answer reveal' : state.role === 'host' ? `Room ${state.code}` : `${state.player.score.toLocaleString()} pts`);
   const timer = element('span', 'timer');
   timer.id = 'question-timer';
   timer.setAttribute('role', 'timer');
@@ -629,6 +667,7 @@ function renderQuestion(state) {
   progress.setAttribute('aria-label', 'Quiz completion');
   panel.insertBefore(progress, panel.querySelector('.eyebrow'));
   panel.append(element('p', 'question-category', question.category));
+  if (question.image?.identification) renderQuestionImage(panel, question.image);
   if (question.type === 'map') renderMapRound(state, panel);
   else {
     const grid = element('div', 'answer-grid');
@@ -654,7 +693,7 @@ function renderQuestion(state) {
     });
     panel.append(grid);
   }
-  if (question.image) renderQuestionImage(panel, question.image);
+  if (question.image && !question.image.identification) renderQuestionImage(panel, question.image);
   if (revealing) return renderRoundReveal(state, panel);
   const status = element('p', 'muted');
   status.id = 'round-status';
@@ -708,7 +747,7 @@ function renderRoundReveal(state, panel) {
   const reveal = state.reveal;
   const feedback = element('div', 'answer-feedback');
   const isMap = state.question.type === 'map';
-  feedback.append(element('h2', '', isMap ? 'Time’s up. Who got closest?' : 'Time’s up. Who got it right?'), element('p', '', reveal.explanation));
+  feedback.append(element('h2', '', isMap ? 'Time’s up. Here’s the town!' : 'Time’s up. Here’s the answer!'), element('p', '', reveal.explanation));
   const source = element(reveal.source.url ? 'a' : 'p', 'source-link', `Source: ${reveal.source.label}`);
   if (reveal.source.url) {
     source.href = reveal.source.url;
@@ -717,16 +756,43 @@ function renderRoundReveal(state, panel) {
     source.append(element('span', 'sr-only', ' (opens in a new tab)'));
   }
   feedback.append(source);
+  panel.append(feedback);
+  if (reveal.image) renderQuestionImage(panel, reveal.image);
+  if (state.role === 'host') {
+    const controls = element('div', 'panel-actions');
+    controls.append(action('Next: see player results →', () => hostAction('results'), true));
+    panel.append(controls);
+  } else {
+    panel.append(element('p', 'muted', 'The host will show everyone’s results next.'));
+  }
+  announce(isMap ? `Time is up. Alex came from ${reveal.target.name}. The host will show player results next.` : `Time is up. Correct answer: ${state.question.answers[reveal.correctAnswer]}. The host will show player results next.`);
+  playTone('reveal');
+}
+
+function renderRoundResults(state) {
+  const reveal = state.reveal;
+  const isMap = state.question.type === 'map';
+  const panel = makePanel(`ROUND ${state.index + 1} OF ${state.total} · SCORE CHECK`, isMap ? 'Who got closest?' : 'Who got it right?');
+  panel.classList.add('round-results-panel');
+  const emblem = element('div', 'results-emblem', isMap ? '🎯' : '✨');
+  emblem.setAttribute('aria-hidden', 'true');
+  panel.append(emblem);
+  const correctCount = reveal.players.filter((player) => player.correct).length;
+  const answered = reveal.players.filter((player) => player.selected !== null).length;
+  const summary = isMap ? answered ? `${correctCount} closest ${correctCount === 1 ? 'pin' : 'pins'} · ${answered} ${answered === 1 ? 'location' : 'locations'} locked in.` : 'No pins submitted. Zero points this round.' : `${correctCount} of ${reveal.players.length} got it right.`;
+  panel.append(element('p', 'results-summary', summary));
+  panel.append(element('p', 'muted', isMap ? `Correct town: ${reveal.target.name}.` : `Correct answer: ${state.question.answers[reveal.correctAnswer]}.`));
+  if (isMap) renderMapRound(state, panel);
   const list = element('ul', 'round-results');
   reveal.players.forEach((player, index) => {
     const row = element('li', `round-result${player.correct ? ' round-correct' : ''}`);
-    const outcome = player.selected === null ? 'No answer' : isMap ? `${player.distanceKm.toFixed(1)} km away${player.correct ? ' · Closest ✓' : ''}` : player.correct ? 'Correct ✓' : `Incorrect · picked ${'ABCD'[player.selected]}`;
-    row.append(element('span', 'round-player', `${isMap ? `#${index + 1} ` : ''}${avatars[player.avatar].emoji} ${player.name}`), element('span', '', outcome), element('span', '', `+${player.points} · ${player.score.toLocaleString()} total`));
+    const isYou = player.name === state.player?.name;
+    if (isYou) row.classList.add('round-is-you');
+    const outcome = player.selected === null ? 'No answer' : isMap ? `${player.distanceKm.toFixed(1)} km away${player.correct ? ' · Closest ✓' : ''}` : `${player.correct ? 'Correct ✓' : 'Incorrect'} · ${'ABCD'[player.selected]}: ${state.question.answers[player.selected]}`;
+    row.append(element('span', 'round-player', `${isMap ? `#${index + 1} ` : ''}${avatars[player.avatar].emoji} ${player.name}${isYou ? ' (you)' : ''}`), element('span', '', outcome), element('span', 'round-score-points', `+${player.points} points · ${player.score.toLocaleString()} total`));
     list.append(row);
   });
-  feedback.append(list);
-  panel.append(feedback);
-  if (reveal.image) renderQuestionImage(panel, reveal.image);
+  panel.append(list);
   if (state.role === 'host') {
     const controls = element('div', 'panel-actions');
     controls.append(action(state.index === state.total - 1 ? 'Reveal final podium →' : 'Next question →', () => hostAction('next'), true));
@@ -734,8 +800,7 @@ function renderRoundReveal(state, panel) {
   } else {
     panel.append(element('p', 'muted', 'The host will start the next round when everyone is ready.'));
   }
-  const correctCount = reveal.players.filter((player) => player.correct).length;
-  announce(isMap ? `Time is up. Alex came from ${reveal.target.name}. ${correctCount} players share the closest guess. Distances and scores are listed below the map.` : `Time is up. Correct answer: ${state.question.answers[reveal.correctAnswer]}. ${correctCount} of ${reveal.players.length} players got it right.`);
+  announce(`Round ${state.index + 1} results. ${summary} Each player’s answer, points and total score are listed.`);
   const gotIt = reveal.players.find((player) => player.name === state.player?.name)?.correct;
   playTone(state.role === 'player' && !gotIt ? 'wrong' : 'correct');
 }
@@ -761,7 +826,7 @@ function renderMapRound(state, panel) {
     panel.append(action('Reload game', () => location.reload()));
     return;
   }
-  const revealing = state.status === 'reveal';
+  const revealing = state.status === 'reveal' || state.status === 'results';
   const interactive = state.role === 'player' && !revealing;
   const { bounds, width, height } = data;
   const svgNode = (tag, attributes) => {
@@ -771,7 +836,7 @@ function renderMapRound(state, panel) {
   };
   const area = element('div', 'map-round');
   const canvas = element(interactive ? 'button' : 'div', `map-canvas${interactive ? ' map-control' : ''}`);
-  const svg = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': revealing ? 'Map of New Hampshire with the correct town and numbered player guesses. Distances are listed in the results.' : 'Outline map of New Hampshire, with north at the top.' });
+  const svg = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': state.status === 'results' ? 'Map of New Hampshire with the correct town and numbered player guesses. Distances are listed in the results.' : revealing ? 'Map of New Hampshire with the correct town marked by a square.' : 'Outline map of New Hampshire, with north at the top.' });
   svg.append(svgNode('polygon', { points: data.outline.map(([lng, lat]) => {
     const { x, y } = mapPosition({ lat, lng });
     return `${x},${y}`;
@@ -788,7 +853,7 @@ function renderMapRound(state, panel) {
   area.append(credit);
   panel.append(area);
   if (revealing) {
-    state.reveal.players.forEach((player, index) => {
+    (state.reveal.players || []).forEach((player, index) => {
       if (!player.selected) return;
       const { x, y } = mapPosition(player.selected);
       svg.append(svgNode('circle', { cx: x, cy: y, r: 10, class: 'map-player-pin' }));
@@ -801,7 +866,7 @@ function renderMapRound(state, panel) {
     const target = svgNode('text', { x: x + 10, y: y - 12, class: 'map-target-label' });
     target.textContent = state.reveal.target.name;
     svg.append(target);
-    area.append(element('p', 'muted', 'The square marks the correct town. Numbered circles match the player results below.'));
+    area.append(element('p', 'muted', state.status === 'results' ? 'The square marks the correct town. Numbered circles match the player results below.' : 'The square marks the correct town. Player pins and distances appear on the next screen.'));
     return;
   }
   if (!interactive) {
@@ -882,7 +947,7 @@ function renderQuestionImage(panel, data) {
   status.setAttribute('role', 'status');
   const caption = element('figcaption', 'photo-caption');
   caption.append(element('span', '', `${data.caption} Photo: ${data.author}. `));
-  const original = element('a', '', 'Wikimedia Commons source');
+  const original = element('a', '', data.sourceLabel || 'Wikimedia Commons source');
   original.href = data.source;
   caption.append(original, element('span', '', ' · '));
   const license = element(data.licenseUrl ? 'a' : 'span', '', data.license);
@@ -892,7 +957,7 @@ function renderQuestionImage(panel, data) {
     if (!figure.isConnected) return;
     clearTimeout(imageTimer);
     image.classList.add('hidden');
-    status.textContent = 'Photo unavailable. The question and answers still work.';
+    status.textContent = data.identification ? `Photo unavailable. Visual description: ${data.alt} You can answer from this description or retry the photo. The timer keeps running.` : 'Photo unavailable. The question and answers still work.';
     if (!figure.querySelector('button')) figure.append(action('Retry photo', load));
   };
   const load = () => {
