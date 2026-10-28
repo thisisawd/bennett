@@ -1,14 +1,128 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>bennett</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4ed">
+  <meta name="description" content="Twenty questions. One very Bennett teammate. Join a private quiz and compete for the ultimate Bennett bragging rights.">
+  <title>The Bennett Quiz — How well do you know Alexander?</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js" defer></script>
+  <script src="app.js" defer></script>
 </head>
 <body>
-  <h1>bennett</h1>
-  <p>Describe what you'd like to build in the Copilot terminal.</p>
-  <script src="app.js"></script>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="The Bennett Quiz home">
+      <span class="brand-icon" aria-hidden="true">b<span>✳</span></span>
+      <span>the bennett quiz<span class="brand-sub">A THISISAWD ORIGINAL</span></span>
+    </a>
+    <nav class="header-actions" aria-label="Main navigation">
+      <button class="sound-button" id="sound-toggle" type="button" aria-pressed="false"><span aria-hidden="true">♫</span> Sound off</button>
+      <button class="button button-outline button-small" id="host-button" type="button">Host a game <span aria-hidden="true">↗</span></button>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="landing" id="landing" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> GOOD TEAMMATE. GREAT QUIZ MATERIAL.</p>
+        <h1 id="hero-title">You know Alex.<br>But do you<br><span class="headline-highlight">know Bennett?</span></h1>
+        <p class="hero-description">The man. The myth. The New Hampshirite.<br>20 questions to find out who knows our favorite<br class="desktop-break"> industrial designer best.</p>
+        <div class="quiz-facts" aria-label="Quiz details">
+          <span><span aria-hidden="true">▤</span> 20 questions</span>
+          <span><span aria-hidden="true">◷</span> ~8 minutes</span>
+          <span><span aria-hidden="true">✦</span> All the bragging rights</span>
+        </div>
+
+        <div class="bennett-art" role="img" aria-label="Playful illustrated Bennett starter pack: New Hampshire mountains, a baseball cap, a dog, and design sketches.">
+          <div class="art-grid" aria-hidden="true"></div>
+          <span class="art-note art-note-top" aria-hidden="true">THE BENNETT STARTER PACK</span>
+          <svg class="starter-illustration" viewBox="0 0 640 280" aria-hidden="true" focusable="false">
+            <path d="M66 224 155 79 205 151 245 95 330 224Z" fill="#6d8974" stroke="#253b32" stroke-width="3" stroke-linejoin="round"/>
+            <path d="m127 125 28-46 31 45-21-9-13 12-10-12Z" fill="#fffdf3" stroke="#253b32" stroke-width="2"/>
+            <path d="m214 143 31-48 32 48-18-8-14 11-13-13Z" fill="#fffdf3" stroke="#253b32" stroke-width="2"/>
+            <path d="M53 224h532" fill="none" stroke="#253b32" stroke-width="3" stroke-linecap="round"/>
+            <g transform="rotate(-12 355 128)">
+              <path d="M284 143c0-70 18-96 67-96s70 32 70 96Z" fill="#d85e43" stroke="#253b32" stroke-width="3"/>
+              <path d="M274 141c46-9 111-8 157 0 37 6 46 20 26 29-19 8-61-4-89-6-44-3-69 7-86 2-17-5-23-18-8-25Z" fill="#bf4932" stroke="#253b32" stroke-width="3"/>
+              <path d="M353 50c-14 19-16 46-14 87" fill="none" stroke="#253b32" stroke-width="2"/>
+              <text x="355" y="115" text-anchor="middle" fill="#fff8e9" font-family="Georgia, serif" font-weight="bold" font-size="54">B</text>
+              <path d="M290 150c32-5 67-5 95-1" fill="none" stroke="#f59b7e" stroke-width="3" stroke-linecap="round"/>
+            </g>
+            <g transform="rotate(9 486 187)">
+              <rect x="436" y="139" width="116" height="88" rx="5" fill="#fffdf3" stroke="#253b32" stroke-width="3"/>
+              <path d="M452 159h59m-59 9h35m-29 31 14-18 25 6 10 21-40 3Z" fill="none" stroke="#6d8974" stroke-width="2" stroke-linecap="round"/>
+              <path d="m510 191 6-7 32 27-6 7Z" fill="#eabf54" stroke="#253b32" stroke-width="2"/>
+              <path d="m510 191-2 9 8-2" fill="#253b32"/>
+            </g>
+            <g>
+              <path d="M224 224v-43c0-26 20-44 47-44s46 18 46 44v43" fill="#e4b575" stroke="#253b32" stroke-width="3"/>
+              <path d="M239 143c-19-12-29-3-33 16-6 25-2 41 10 40 14-1 19-23 23-56Zm62 0c19-12 29-3 33 16 6 25 2 41-10 40-14-1-19-23-23-56Z" fill="#b67c4e" stroke="#253b32" stroke-width="3"/>
+              <ellipse cx="271" cy="193" rx="22" ry="17" fill="#fff4d8"/>
+              <circle cx="253" cy="174" r="4" fill="#253b32"/><circle cx="288" cy="174" r="4" fill="#253b32"/>
+              <path d="M263 187q8-6 16 0l-8 8Z" fill="#253b32"/>
+              <path d="M271 195v6m-11-2q11 13 22 0" fill="none" stroke="#253b32" stroke-width="2.5" stroke-linecap="round"/>
+              <path d="M231 218h78" fill="none" stroke="#d85e43" stroke-width="9"/>
+              <circle cx="272" cy="220" r="7" fill="#edc85f" stroke="#253b32" stroke-width="2"/>
+            </g>
+            <path d="m96 61 5 13 14 2-11 9 2 14-11-8-13 6 4-14-9-10 14 1Z" fill="#edc85f" stroke="#253b32" stroke-width="2"/>
+            <path d="m524 70 4 11 12 1-9 8 2 12-10-7-11 5 3-12-8-9 12 1Z" fill="#edc85f" stroke="#253b32" stroke-width="2"/>
+            <path d="m390 206 7 6m-8 4 6-1m-2-20 1 5" stroke="#253b32" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span class="art-sticker" aria-hidden="true">100%<br>BENNETT<br><span>0% boring</span></span>
+          <span class="art-note art-note-bottom" aria-hidden="true">NEW ENGLAND ROOTS. MAIN CHARACTER ENERGY.</span>
+        </div>
+      </div>
+
+      <aside class="join-area" aria-labelledby="join-title">
+        <div class="join-card">
+          <div class="card-heading"><span class="mini-star" aria-hidden="true">✳</span><span class="tag">YOU'RE INVITED</span></div>
+          <h2 id="join-title">Get in on the fun.</h2>
+          <p class="card-description">Your Bennett knowledge has been training<br class="desktop-break"> for this moment.</p>
+          <form id="join-form" novalidate>
+            <div class="field">
+              <label for="room-code">Game code <span>FROM YOUR HOST</span></label>
+              <input id="room-code" name="code" type="text" placeholder="e.g. BNNT42" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="code-hint form-error" required>
+              <p class="field-hint" id="code-hint">Six characters. One very Bennett experience.</p>
+            </div>
+            <div class="field">
+              <label for="player-name">Your name</label>
+              <input id="player-name" name="name" type="text" placeholder="What should we call you?" maxlength="24" autocomplete="nickname" aria-describedby="form-error" required>
+            </div>
+            <fieldset class="avatar-fieldset">
+              <legend>Pick your alter ego <span>MAKE IT YOU</span></legend>
+              <div class="avatar-options" id="avatar-options"></div>
+            </fieldset>
+            <p class="form-error" id="form-error" role="alert"></p>
+            <button class="button button-primary join-button" id="join-submit" type="submit">Let's play <span aria-hidden="true">→</span></button>
+          </form>
+          <p class="join-footnote"><span aria-hidden="true">↳</span> Your own pace. Your own screen. One epic winner.</p>
+        </div>
+        <p class="below-card"><span aria-hidden="true">✧</span> No downloads. No sign-ups. Just good company.</p>
+      </aside>
+    </section>
+
+    <section class="experience hidden" id="experience" aria-labelledby="experience-title"></section>
+
+    <section class="how-it-works" id="how-it-works" aria-labelledby="how-title">
+      <div class="how-intro"><p class="eyebrow">A LITTLE FRIENDLY COMPETITION</p><h2 id="how-title">Big Bennett energy.<br>Small learning curve.</h2></div>
+      <article class="how-step"><span class="step-number">01</span><h3>Make yourself known.</h3><p>Grab the code, drop your name,<br class="desktop-break"> and find your emoji identity.</p></article>
+      <article class="how-step"><span class="step-number">02</span><h3>Trust your Bennett instinct.</h3><p>20 quick-fire questions. Play privately.<br class="desktop-break"> Correct + quick = more points.</p></article>
+      <article class="how-step"><span class="step-number">03</span><h3>Meet at the podium.</h3><p>Everyone reunites for the big reveal.<br class="desktop-break"> The bragging rights are very real.</p></article>
+    </section>
+    <div class="runtime-notice hidden" id="runtime-notice" role="status"></div>
+    <p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
+  </main>
+  <footer class="site-footer"><span>Made for the team. Inspired by Bennett.</span><span>A little trivia. A lot of character. <span class="footer-star" aria-hidden="true">✳</span></span></footer>
+
+  <dialog class="host-dialog" id="host-dialog" aria-labelledby="host-title">
+    <div class="dialog-top"><span class="eyebrow">YOU'RE RUNNING THE SHOW</span><button class="icon-button" id="close-host" type="button" aria-label="Close host setup">×</button></div>
+    <h2 id="host-title">Bring the team together.</h2>
+    <p>Create a room, share the six-character code, and start when everyone's here. Players answer privately, then reunite for your final podium reveal.</p>
+    <p class="host-note">7 questions use the facts you shared. 13 are clearly marked playful hypotheticals, with a just-for-fun “Bennett energy” answer key.</p>
+    <p class="form-error" id="host-error" role="alert"></p>
+    <button class="button button-primary" id="create-room" type="button">Create a game <span aria-hidden="true">→</span></button>
+  </dialog>
 </body>
 </html>
