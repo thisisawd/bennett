@@ -6,33 +6,36 @@ const path = require('node:path');
 const { randomBytes, randomInt } = require('node:crypto');
 
 const PORT = Number(process.env.PORT) || 3000;
-const QUESTION_MS = 25000;
+const QUESTION_MS = 10000;
 const ROOM_MS = 6 * 60 * 60 * 1000;
 const rooms = new Map();
 const limits = new Map();
 const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean));
 const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const portfolio = { label: "Alexander's public portfolio", url: 'https://www.behance.net/alexbennett' };
+const presenterGuide = { label: 'Microsoft Presenter+ support', url: 'https://support.microsoft.com/en-us/surface/accessories/certified/use-microsoft-presenter-in-microsoft-teams' };
+const garbagePlateGuide = { label: 'Visit Rochester: the Garbage Plate', url: 'https://www.visitrochester.com/restaurants/the-garbage-plate/' };
 const questions = [
-  { kind: 'fact', category: 'Origin story', prompt: 'Every legend starts somewhere. Where is Alexander from?', answers: ['New Hampshire', 'New Mexico', 'New Jersey', 'New Zealand'], correct: 0, explanation: 'New Hampshire! The Granite State gets to claim this particular design legend.' },
-  { kind: 'fact', category: 'By design', prompt: 'What does Alex do when he’s not being quiz material?', answers: ['Industrial espionage', 'Industrial design', 'Professional leaf peeping', 'Red Sox mascot consulting'], correct: 1, explanation: 'Industrial designer. Making things work better AND look better is a pretty solid superpower.' },
-  { kind: 'fact', category: 'The Rochester chapter', prompt: 'Which place belongs in the Alexander Bennett origin story?', answers: ['Rivendell', 'Roswell', 'Rochester', 'Rio de Janeiro'], correct: 2, explanation: 'Rochester! We know he went to Rochester — no invented degree or school name required.' },
-  { kind: 'fact', category: 'Very good company', prompt: 'Who is part of the Bennett household’s four-legged delegation?', answers: ['A miniature moose', 'An emotional-support lobster', 'A retired Fenway squirrel', 'A dog'], correct: 3, explanation: 'A dog! Breed, name, and ability to critique a prototype remain delightfully unconfirmed.' },
-  { kind: 'fact', category: 'The household soundtrack', prompt: 'Who gets a spot on Alex’s wife’s playlist?', answers: ['Noah Kahan', 'A recording of a leaf blower', 'The dial-up internet sound', 'An audiobook about chair legs'], correct: 0, explanation: 'Noah Kahan. Strong New England energy in the Bennett household soundtrack.' },
-  { kind: 'fact', category: 'Excellent taste', prompt: 'Which brand is a known favorite of Alex’s wife?', answers: ['NASA surplus', 'L.L.Bean', 'Formula 1 teamwear', 'Medieval armor outlet'], correct: 1, explanation: 'L.L.Bean! A love of Noah Kahan and L.L.Bean is a very respectable combination.' },
-  { kind: 'fact', category: 'Home team advantage', prompt: 'It’s baseball season. Which team has Alex’s allegiance?', answers: ['New York Yankees', 'Los Angeles Dodgers', 'Boston Red Sox', 'The office softball printer team'], correct: 2, explanation: 'The Boston Red Sox. Some loyalties are bigger than a quiz.' },
-  { kind: 'fun', category: 'Hypothetical · Design brain', prompt: 'Imagine Alex encounters a wobbly café table. What’s the most designer-energy response?', answers: ['Declare the floor obsolete', 'Only order perfectly balanced food', 'Write the table a performance review', 'Sketch a better table leg on a napkin'], correct: 3, explanation: 'The imaginary answer: sketch a better leg. A design problem is just a napkin sketch waiting to happen.' },
-  { kind: 'fun', category: 'Hypothetical · New Hampshire mode', prompt: 'You’re making a fictional Bennett action figure. Which accessory belongs in the box?', answers: ['A tiny mountain and a sketchbook', 'A gold-plated traffic cone', 'A personal desert sandstorm', 'A submarine valet ticket'], correct: 0, explanation: 'Our made-up starter pack goes with a mountain and a sketchbook: New Hampshire meets industrial design.' },
-  { kind: 'fun', category: 'Hypothetical · Dog department', prompt: 'If Alex’s dog joined the design team, what job would suit a very good dog?', answers: ['Spreadsheet password auditor', 'Chief Fetch & Feel Officer', 'Head of vacuum appreciation', 'Director of unopened treats'], correct: 1, explanation: 'Chief Fetch & Feel Officer. This fictional appointment includes unlimited positive feedback and probably a tennis ball.' },
-  { kind: 'fun', category: 'Hypothetical · Date night', prompt: 'Plan an imaginary outing using BOTH of his wife’s known favorites.', answers: ['A silent disco in a hardware store', 'A Yankees game in flip-flops', 'Noah Kahan on the speakers, an L.L.Bean shopping stop', 'A seminar about printer settings'], correct: 2, explanation: 'Noah Kahan plus L.L.Bean: a playful plan built from two actual favorites, not a real date-night report.' },
-  { kind: 'fun', category: 'Hypothetical · Fenway feelings', prompt: 'Which fake out-of-office reply has the most Red Sox fan energy?', answers: ['Gone to count ceiling tiles', 'Currently arguing with my stapler', 'Optimizing my desktop wallpaper', 'At Fenway. Please respect this important research.'], correct: 3, explanation: 'In our imagined universe, Fenway counts as important research. No actual out-of-office messages were inspected.' },
-  { kind: 'fun', category: 'Hypothetical · Prototype problems', prompt: 'Alex gets an imaginary magic wand for work. What’s the designer’s dream spell?', answers: ['Make the first prototype work exactly as intended', 'Turn every chair into a beanbag', 'Replace all rulers with noodles', 'Add seven unnecessary charging ports'], correct: 0, explanation: 'A flawless first prototype. This is a fictional designer wish, not evidence that magic has entered the Bennett workflow.' },
-  { kind: 'fun', category: 'Hypothetical · Granite State glow-up', prompt: 'Invent a ridiculous New Hampshire superhero name for Alex.', answers: ['Captain Tropical Humidity', 'The Granite State Prototyper', 'The Sultan of Sand Dunes', 'Baron Broken Hinge'], correct: 1, explanation: 'The Granite State Prototyper! Completely invented. Cape ergonomics presumably excellent.' },
-  { kind: 'fun', category: 'Hypothetical · Good dog, great pitch', prompt: 'The dog pitches a fictional household product. Which concept wins?', answers: ['A silent doorbell for squirrels only', 'A leash that does tax returns', 'An ergonomically perfect treat dispenser', 'A self-walking empty leash'], correct: 2, explanation: 'The treat dispenser wins this imaginary pitch. Human-centered design meets extremely dog-centered priorities.' },
-  { kind: 'fun', category: 'Hypothetical · Road trip rules', prompt: 'Build a pretend Bennett-household road trip. Which combo makes the most sense?', answers: ['Yankees radio and a pet cactus', 'A tropical island and snow tires', 'A silent car full of loose printers', 'Noah Kahan, outdoor layers, and a dog-friendly stop'], correct: 3, explanation: 'The fictional road trip pairs the known household interests with a stop for the very good dog.' },
-  { kind: 'fun', category: 'Hypothetical · Design review', prompt: 'Which imaginary compliment would make an industrial designer’s day?', answers: ['“It feels as good as it looks.”', '“I love the seventeen extra screws.”', '“The instructions are longer than my thesis.”', '“Nobody knows which end is up.”'], correct: 0, explanation: '“It feels as good as it looks.” A just-for-fun nod to useful, thoughtful design — not a quote from Alex.' },
-  { kind: 'fun', category: 'Hypothetical · Team merch', prompt: 'We’re inventing Bennett fan-club merch. Pick the most on-theme design.', answers: ['A sequined calculator holster', 'A mountain-and-baseball sketchbook', 'A Yankees-branded beach gong', 'A life-size foam fax machine'], correct: 1, explanation: 'Mountains, baseball, and sketching: a fictional fan-club mashup of real Bennett themes.' },
-  { kind: 'fun', category: 'Hypothetical · Alternate universe', prompt: 'In a completely fictional Bennett movie, who steals every scene?', answers: ['An unlabelled USB cable', 'A very slow loading screen', 'The dog, obviously', 'A room-temperature glass of water'], correct: 2, explanation: 'The dog gets our imaginary award. That’s not a biographical fact; that’s just strong casting.' },
-  { kind: 'fun', category: 'Hypothetical · The grand finale', prompt: 'Choose a fictional tagline for the Alexander Bennett cinematic universe.', answers: ['“No pets. No sketches. No baseball.”', '“Proudly designed without any design.”', '“A lifelong Yankees documentary.”', '“New Hampshire roots. Well-designed adventures.”'], correct: 3, explanation: '“New Hampshire roots. Well-designed adventures.” A made-up tagline to celebrate the real teammate.' },
+  { category: 'Meet the designer', prompt: 'Which design discipline does Alexander list in his Microsoft role?', answers: ['Industrial design', 'Landscape architecture', 'Fashion design', 'Editorial design'], correct: 0, explanation: 'His public portfolio lists Industrial Designer at Microsoft: physical products, not just pixels.', source: portfolio },
+  { category: 'Inside Microsoft', prompt: 'Which Microsoft team does Alex name in his public bio?', answers: ['Xbox game publishing', 'Devices', 'Azure networking', 'Bing advertising'], correct: 1, explanation: 'Alex describes himself as an industrial designer on Microsoft’s devices team.', source: portfolio },
+  { category: 'The Rochester connection', prompt: 'Alex calls himself an “RIT ID Alum.” What does RIT stand for?', answers: ['Rhode Island Technical', 'Richmond Institute of Technology', 'Rochester Institute of Technology', 'Royal Institute of Typography'], correct: 2, explanation: 'RIT is Rochester Institute of Technology. His portfolio explicitly identifies him as an industrial design alum.', source: portfolio },
+  { category: 'Prototype mode', prompt: 'What two ingredients does Alex say he uses to “prototype the future”?', answers: ['Clay and watercolor', 'Spreadsheets and surveys', 'Film and photography', 'Electronics and code'], correct: 3, explanation: 'His own bio says “using electronics and code to prototype the future.”', source: portfolio },
+  { category: 'Product spotlight', prompt: 'Which Microsoft product has its own project in Alex’s public portfolio?', answers: ['Microsoft Presenter+', 'Surface Studio 2+', 'Xbox Adaptive Controller', 'HoloLens 2'], correct: 0, explanation: 'Microsoft Presenter+ is a named project in Alex’s portfolio. That is a documented connection, not a guess based on his employer.', source: portfolio },
+  { category: 'Behind the scenes', prompt: 'Which project title appears alongside Presenter+ in Alex’s portfolio?', answers: ['Datacenter Cooling', 'Hardware Prototyping', 'Flight Simulator Cockpit', 'Quantum Computing'], correct: 1, explanation: '“Hardware Prototyping” is another project listed in his public portfolio.', source: portfolio },
+  { category: 'Beyond the day job', prompt: 'Which watch project is listed in Alex’s portfolio?', answers: ['Pixel Watch', 'Apple Watch Ultra', 'Second Surface Watch', 'Galaxy Watch'], correct: 2, explanation: 'The portfolio title is “Second Surface Watch.” A portfolio title is not evidence that he designed a shipped Microsoft watch.', source: portfolio },
+  { category: 'Take a seat', prompt: 'Which furniture project is part of Alex’s public design portfolio?', answers: ['Gesture Chair', 'Aeron Chair', 'Embody Chair', 'Invitation Chair'], correct: 3, explanation: '“Invitation Chair” appears in his portfolio: the work extends beyond electronics.', source: portfolio },
+  { category: 'Rochester food break', prompt: 'What is Rochester’s famous Garbage Plate?', answers: ['Burgers or hots over sides like macaroni salad and home fries, with meat hot sauce', 'A cold seafood platter with cocktail sauce', 'A breakfast stack of pancakes and fruit', 'A pizza topped with pasta and cheese'], correct: 0, explanation: 'A traditional Garbage Plate layers a protein such as cheeseburgers or hots over sides such as macaroni salad and home fries, usually topped with Rochester-style meat hot sauce. Combinations vary. This is Rochester food trivia, not a claim about Alex’s favorite meal.', source: garbagePlateGuide },
+  { category: 'Rochester · The original', prompt: 'Which Rochester restaurant is home to the original Garbage Plate?', answers: ['Dog Town Hots', 'Nick Tahou Hots', 'Dinosaur Bar-B-Que', 'Genesee Brew House'], correct: 1, explanation: 'Nick Tahou Hots originated the Garbage Plate and trademarked the name. Other Rochester restaurants serve their own versions under different names.', source: garbagePlateGuide },
+  { category: 'Presenter+ · Meeting room', prompt: 'Presenter+ is a certified remote for which Microsoft app?', answers: ['Outlook', 'OneNote', 'Microsoft Teams', 'Microsoft Whiteboard'], correct: 2, explanation: 'Microsoft describes Presenter+ as a Certified for Microsoft Teams remote for work or school meetings and calls.', source: presenterGuide },
+  { category: 'Presenter+ · Cut the cord', prompt: 'How does Presenter+ pair with a Windows PC or Mac?', answers: ['NFC only', 'Wi-Fi Direct', 'An infrared receiver', 'Bluetooth'], correct: 3, explanation: 'Microsoft’s setup instructions start with Bluetooth pairing on a Windows 10/11 PC or Mac.', source: presenterGuide },
+  { category: 'Presenter+ · Slide into it', prompt: 'Which Teams feature lets you present slides with Presenter+?', answers: ['PowerPoint Live', 'Excel Live', 'Together mode', 'Loop components'], correct: 0, explanation: 'The documented presentation workflow is Share → PowerPoint Live in a Teams meeting.', source: presenterGuide },
+  { category: 'Presenter+ · You’re on mute', prompt: 'The Presenter+ mute button is solid red. What does that mean?', answers: ['Your hand is raised', 'Your microphone is muted', 'The next slide is loading', 'The pointer is active'], correct: 1, explanation: 'Solid red means muted; solid white means unmuted. The physical button makes microphone state visible.', source: presenterGuide },
+  { category: 'Presenter+ · Quick contribution', prompt: 'You’re muted and want to speak briefly. What should you do?', answers: ['Double-tap Next', 'Hold the pointer button', 'Hold Mute while speaking, then release', 'Hold Back and Next together'], correct: 2, explanation: 'Holding Mute temporarily unmutes you. Releasing it mutes you again: a physical push-to-talk interaction.', source: presenterGuide },
+  { category: 'Presenter+ · Hands up', prompt: 'Which action raises or lowers your hand during a Teams meeting?', answers: ['Double-tap Mute', 'Hold Next', 'Shake the remote', 'Press and hold the Teams button'], correct: 3, explanation: 'Press and hold the Teams button to raise your hand; repeat to lower it.', source: presenterGuide },
+  { category: 'Presenter+ · Point taken', prompt: 'How do you activate the pointer while presenting in PowerPoint Live?', answers: ['Hold the laser pointer button', 'Double-tap Back', 'Hold Mute', 'Press the Teams button once'], correct: 0, explanation: 'Press and hold the laser pointer button, then point to the area on the slide you want to discuss.', source: presenterGuide },
+  { category: 'Presenter+ · Keep it moving', prompt: 'Which controls move between slides in PowerPoint Live?', answers: ['Mute and Teams', 'Back and Next', 'Volume up and down', 'A scroll wheel'], correct: 1, explanation: 'The remote has dedicated Back and Next buttons for navigating presentation slides.', source: presenterGuide },
+  { category: 'Presenter+ · Make it yours', prompt: 'Which app customizes Presenter+ buttons and pointer settings?', answers: ['Microsoft Designer', 'Surface app', 'Microsoft Accessory Center', 'Windows Media Player'], correct: 2, explanation: 'Microsoft Accessory Center provides button, pointer, and other settings for Presenter+.', source: presenterGuide },
+  { category: 'Presenter+ · Platform twist', prompt: 'Presenter+ pairs with Macs, but its Accessory Center app requires what?', answers: ['Android', 'iPadOS', 'ChromeOS', 'Windows 10 or 11'], correct: 3, explanation: 'The Microsoft Accessory Center app runs on Windows 10/11 and is not available for macOS. Pairing support and customization support are different things.', source: presenterGuide },
 ];
 
 const token = () => randomBytes(24).toString('hex');
@@ -61,24 +64,49 @@ const getPlayer = (room, body) => {
   return player;
 };
 
+function updateRound(room, now = Date.now()) {
+  if (room.status !== 'playing' || now < room.deadline) return;
+  const correctAnswer = room.options[room.index].indexOf(questions[room.index].correct);
+  room.players.forEach((player) => {
+    const answer = player.answers[room.index];
+    if (answer?.selected === correctAnswer) {
+      answer.points = 600 + Math.round(400 * Math.max(0, 1 - answer.elapsed / QUESTION_MS));
+      player.score += answer.points;
+      player.correct++;
+    }
+  });
+  room.status = 'reveal';
+}
+
 function publicState(room, body) {
+  updateRound(room);
   const host = body.token === room.hostToken;
   const player = host ? null : getPlayer(room, body);
-  const state = { code: room.code, role: host ? 'host' : 'player', status: room.status, total: questions.length };
-  if (host) state.players = room.players.map(({ name, avatar, index }) => ({ name, avatar, done: index === questions.length }));
+  const state = { code: room.code, role: host ? 'host' : 'player', status: room.status, total: questions.length, index: room.index };
+  state.players = room.players.map((entry) => ({ name: entry.name, avatar: entry.avatar, answered: Boolean(entry.answers[room.index]) }));
   if (player) {
-    state.player = { name: player.name, avatar: player.avatar, index: player.index, score: player.score, correct: player.correct, done: player.index === questions.length };
-    if (room.status === 'playing' && player.index < questions.length) {
-      const { prompt, answers, category, kind } = questions[player.index];
-      state.question = { prompt, answers: player.options[player.index].map((index) => answers[index]), category, kind, remainingMs: player.startedAt === null ? QUESTION_MS : Math.max(0, QUESTION_MS - (Date.now() - player.startedAt)) };
+    state.player = { name: player.name, avatar: player.avatar, score: player.score, correct: player.correct, selected: player.answers[room.index]?.selected ?? null };
+  }
+  if (room.status === 'playing' || room.status === 'reveal') {
+    const { prompt, answers, category, explanation, source } = questions[room.index];
+    state.question = { prompt, answers: room.options[room.index].map((index) => answers[index]), category, remainingMs: Math.max(0, room.deadline - Date.now()) };
+    if (room.status === 'reveal') {
+      const correctAnswer = room.options[room.index].indexOf(questions[room.index].correct);
+      state.reveal = {
+        correctAnswer, explanation, source,
+        players: room.players.map((entry) => {
+          const answer = entry.answers[room.index];
+          return { name: entry.name, avatar: entry.avatar, selected: answer?.selected ?? null, correct: answer?.selected === correctAnswer, points: answer?.points || 0, score: entry.score };
+        }),
+      };
     }
   }
   if (room.status === 'finished') {
     const ranked = [...room.players].sort((a, b) => b.score - a.score || a.joinedAt - b.joinedAt);
-    state.leaderboard = ranked.map((entry, index) => ({
+    state.leaderboard = ranked.map((entry) => ({
       name: entry.name, avatar: entry.avatar, score: entry.score,
       rank: ranked.findIndex((other) => other.score === entry.score) + 1,
-      token: entry === player ? entry.token : undefined,
+      isYou: entry === player,
     }));
   }
   return state;
@@ -89,7 +117,7 @@ function api(command, body) {
     if (rooms.size >= 300) throw fail(503, 'All game rooms are busy. Please try again shortly.');
     let code;
     do { code = Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join(''); } while (rooms.has(code));
-    const room = { code, hostToken: token(), status: 'lobby', players: [], createdAt: Date.now() };
+    const room = { code, hostToken: token(), status: 'lobby', players: [], createdAt: Date.now(), index: -1, deadline: null, options: questions.map(shuffledOptions) };
     rooms.set(code, room);
     return { code, token: room.hostToken };
   }
@@ -101,7 +129,7 @@ function api(command, body) {
     if (!Number.isInteger(body.avatar) || body.avatar < 0 || body.avatar > 5) throw fail(400, 'Choose one of the six emoji avatars.');
     const name = body.name.trim();
     if (room.players.some((player) => player.name.toLocaleLowerCase() === name.toLocaleLowerCase())) throw fail(409, 'Someone is already using that name. Add an initial or choose a nickname.');
-    const player = { token: token(), name, avatar: body.avatar, index: 0, score: 0, correct: 0, joinedAt: Date.now(), startedAt: null, lastResult: null, options: questions.map(shuffledOptions) };
+    const player = { token: token(), name, avatar: body.avatar, score: 0, correct: 0, joinedAt: Date.now(), answers: [] };
     room.players.push(player);
     return { token: player.token };
   }
@@ -111,38 +139,33 @@ function api(command, body) {
     if (room.status !== 'lobby') throw fail(409, 'This game has already started.');
     if (!room.players.length) throw fail(409, 'Wait for at least one player to join.');
     room.status = 'playing';
-    room.players.forEach((player) => { player.startedAt = Date.now(); });
+    room.index = 0;
+    room.deadline = Date.now() + QUESTION_MS;
     return { ok: true };
   }
   if (command === 'answer') {
     const room = getRoom(body);
     const player = getPlayer(room, body);
-    if (room.status === 'finished') return { finished: true };
-    if (room.status !== 'playing') throw fail(409, 'Wait for your host to start the game.');
+    const now = Date.now();
+    updateRound(room, now);
     if (!Number.isInteger(body.index) || body.index < 0 || body.index >= questions.length) throw fail(400, 'That question is not valid.');
-    if (!Number.isInteger(body.answer) || body.answer < -1 || body.answer > 3) throw fail(400, 'Choose one of the four answers.');
-    if (body.index === player.index - 1 && player.lastResult) return player.lastResult;
-    if (body.index !== player.index) throw fail(409, 'Your progress has changed. Reconnecting to your current question.');
-    if (player.startedAt === null) throw fail(409, 'Open the next question before submitting an answer.');
-    const question = questions[player.index];
-    const elapsed = Date.now() - player.startedAt;
-    const selected = elapsed > QUESTION_MS ? -1 : body.answer;
-    const correctAnswer = player.options[player.index].indexOf(question.correct);
-    const correct = selected === correctAnswer;
-    const points = correct ? 600 + Math.round(400 * Math.max(0, 1 - elapsed / QUESTION_MS)) : 0;
-    player.score += points;
-    if (correct) player.correct++;
-    player.index++;
-    // The next timer starts when the player requests the next question, not during answer feedback.
-    player.startedAt = null;
-    player.lastResult = { correct, correctAnswer, selected, points, explanation: question.explanation, index: body.index };
-    return player.lastResult;
+    if (!Number.isInteger(body.answer) || body.answer < 0 || body.answer > 3) throw fail(400, 'Choose one of the four answers.');
+    if (body.index !== room.index) throw fail(409, 'The host has moved to another question. Reconnecting to the live round.');
+    if (player.answers[room.index]) return { accepted: true, selected: player.answers[room.index].selected };
+    if (room.status !== 'playing') throw fail(409, 'Answers are closed. Wait for the host to start the next question.');
+    player.answers[room.index] = { selected: body.answer, elapsed: QUESTION_MS - (room.deadline - now), points: 0 };
+    return { accepted: true, selected: body.answer };
   }
-  if (command === 'finish') {
+  if (command === 'next') {
     const room = getHost(body);
-    if (room.status !== 'playing') throw fail(409, 'There is no active round to finish.');
-    if (!body.force && room.players.some((player) => player.index < questions.length)) throw fail(409, 'Some players are still answering. Wait for them or choose End early.');
-    room.status = 'finished';
+    updateRound(room);
+    if (body.index !== room.index || room.status !== 'reveal') throw fail(409, 'Wait for this round to finish, or reconnect to the current question.');
+    if (room.index === questions.length - 1) room.status = 'finished';
+    else {
+      room.index++;
+      room.status = 'playing';
+      room.deadline = Date.now() + QUESTION_MS;
+    }
     return { ok: true };
   }
   throw fail(404, 'That game action was not found.');
@@ -201,14 +224,6 @@ const server = http.createServer(async (request, response) => {
       let body;
       try { body = JSON.parse(raw); } catch { throw fail(400, 'That request could not be read. Please retry.'); }
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw fail(400, 'Game requests must contain an object.');
-      // Clients explicitly acknowledge the answer reveal before starting the next timer.
-      if (url.pathname === '/api/state') {
-        const room = getRoom(body);
-        if (body.token !== room.hostToken) {
-          const player = getPlayer(room, body);
-          if (room.status === 'playing' && player.index < questions.length && player.startedAt === null && body.advance === true) player.startedAt = Date.now();
-        }
-      }
       send(response, 200, api(url.pathname.slice(5), body));
       return;
     }

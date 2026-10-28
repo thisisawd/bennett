@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5f4ed">
-  <meta name="description" content="Twenty questions. One very Bennett teammate. Join a private quiz and compete for the ultimate Bennett bragging rights.">
+  <meta name="description" content="Twenty live questions about Alexander Bennett, design, and Microsoft Presenter+. Join the same round on your own device.">
   <title>The Bennett Quiz — How well do you know Alexander?</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="config.js" defer></script>
-  <script src="app.js" defer></script>
+  <link rel="stylesheet" href="style.css?v=live-1">
+  <script src="config.js?v=live-1" defer></script>
+  <script src="app.js?v=live-1" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -18,7 +18,7 @@
       <span>the bennett quiz<span class="brand-sub">A THISISAWD ORIGINAL</span></span>
     </a>
     <nav class="header-actions" aria-label="Main navigation">
-      <button class="sound-button" id="sound-toggle" type="button" aria-pressed="false"><span aria-hidden="true">♫</span> Sound off</button>
+      <button class="sound-button" id="sound-toggle" type="button" aria-pressed="false"><span aria-hidden="true">♫</span> Music off</button>
       <button class="button button-outline button-small" id="host-button" type="button">Host a game <span aria-hidden="true">↗</span></button>
     </nav>
   </header>
@@ -28,10 +28,10 @@
       <div class="hero-copy">
         <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> GOOD TEAMMATE. GREAT QUIZ MATERIAL.</p>
         <h1 id="hero-title">You know Alex.<br>But do you<br><span class="headline-highlight">know Bennett?</span></h1>
-        <p class="hero-description">The man. The myth. The New Hampshirite.<br>20 questions to find out who knows our favorite<br class="desktop-break"> industrial designer best.</p>
+        <p class="hero-description">The designer. The devices. The bragging rights.<br>20 live questions about Alex, his public portfolio,<br class="desktop-break"> and the Microsoft Presenter+ product.</p>
         <div class="quiz-facts" aria-label="Quiz details">
           <span><span aria-hidden="true">▤</span> 20 questions</span>
-          <span><span aria-hidden="true">◷</span> ~8 minutes</span>
+          <span><span aria-hidden="true">◷</span> 10 seconds per round</span>
           <span><span aria-hidden="true">✦</span> All the bragging rights</span>
         </div>
 
@@ -97,7 +97,7 @@
             <p class="form-error" id="form-error" role="alert"></p>
             <button class="button button-primary join-button" id="join-submit" type="submit">Let's play <span aria-hidden="true">→</span></button>
           </form>
-          <p class="join-footnote"><span aria-hidden="true">↳</span> Your own pace. Your own screen. One epic winner.</p>
+          <p class="join-footnote"><span aria-hidden="true">↳</span> Same question. Your own answers. One live game.</p>
         </div>
         <p class="below-card"><span aria-hidden="true">✧</span> No downloads. No sign-ups. Just good company.</p>
       </aside>
@@ -108,8 +108,8 @@
     <section class="how-it-works" id="how-it-works" aria-labelledby="how-title">
       <div class="how-intro"><p class="eyebrow">A LITTLE FRIENDLY COMPETITION</p><h2 id="how-title">Big Bennett energy.<br>Small learning curve.</h2></div>
       <article class="how-step"><span class="step-number">01</span><h3>Make yourself known.</h3><p>Grab the code, drop your name,<br class="desktop-break"> and find your emoji identity.</p></article>
-      <article class="how-step"><span class="step-number">02</span><h3>Trust your Bennett instinct.</h3><p>20 quick-fire questions. Play privately.<br class="desktop-break"> Correct + quick = more points.</p></article>
-      <article class="how-step"><span class="step-number">03</span><h3>Meet at the podium.</h3><p>Everyone reunites for the big reveal.<br class="desktop-break"> The bragging rights are very real.</p></article>
+      <article class="how-step"><span class="step-number">02</span><h3>Beat the live countdown.</h3><p>Everyone gets the same 10 seconds.<br class="desktop-break"> Lock in one answer on your device.</p></article>
+      <article class="how-step"><span class="step-number">03</span><h3>See who nailed it.</h3><p>Answers reveal when the timer ends.<br class="desktop-break"> Your host starts the next round.</p></article>
     </section>
     <div class="runtime-notice hidden" id="runtime-notice" role="status"></div>
     <p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
@@ -119,8 +119,8 @@
   <dialog class="host-dialog" id="host-dialog" aria-labelledby="host-title">
     <div class="dialog-top"><span class="eyebrow">YOU'RE RUNNING THE SHOW</span><button class="icon-button" id="close-host" type="button" aria-label="Close host setup">×</button></div>
     <h2 id="host-title">Bring the team together.</h2>
-    <p>Create a room, share the six-character code, and start when everyone's here. Players answer privately, then reunite for your final podium reveal.</p>
-    <p class="host-note">7 questions use the facts you shared. 13 are clearly marked playful hypotheticals, with a just-for-fun “Bennett energy” answer key.</p>
+    <p>Create a room and share the invite link. Put your host screen on the big screen or share it on a call. Everyone answers separately on their own device.</p>
+    <p class="host-note">20 researched questions about Alex’s public design portfolio, Microsoft Presenter+, and Rochester’s Garbage Plate. Each round has a shared 10-second timer, then a reveal of who got it right. You control Next. Original background music starts after you click Host a game or join; mute it in the header.</p>
     <p class="form-error" id="host-error" role="alert"></p>
     <button class="button button-primary" id="create-room" type="button">Create a game <span aria-hidden="true">→</span></button>
   </dialog>

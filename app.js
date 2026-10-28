@@ -16,10 +16,14 @@ let countdownTimer;
 let pollBusy = false;
 let soundEnabled = false;
 let audioContext;
-let activeFeedback = null;
+let musicTimer;
+let musicGain;
+let musicStep = 0;
+let soundChosen = false;
+let roundEndsAt = 0;
 let pendingAnswer = null;
 let connectionFailures = 0;
-let submitting = false;
+let submitting = null;
 
 const announce = (text) => { $('#announcement').textContent = text; };
 const element = (tag, className, text) => {
@@ -77,13 +81,87 @@ function playTone(kind) {
 }
 
 function updateSoundButton() {
-  $('#sound-toggle').textContent = `♫ Sound ${soundEnabled ? 'on' : 'off'}`;
+  $('#sound-toggle').textContent = `♫ Music ${soundEnabled ? 'on' : 'off'}`;
   $('#sound-toggle').setAttribute('aria-pressed', String(soundEnabled));
 }
+function stopMusic() {
+  clearInterval(musicTimer);
+  musicTimer = null;
+  if (musicGain && audioContext) {
+    const previousGain = musicGain;
+    previousGain.gain.setTargetAtTime(0, audioContext.currentTime, .04);
+    setTimeout(() => previousGain.disconnect(), 350);
+    musicGain = null;
+  }
+}
+
+function startMusic() {
+  if (!soundEnabled || musicTimer || document.hidden) return;
+  try {
+    audioContext ??= new (window.AudioContext || window.webkitAudioContext)();
+    audioContext.resume().catch(() => {
+      stopMusic();
+      soundEnabled = false;
+      updateSoundButton();
+      announce('Music could not start. You can continue playing without it.');
+    });
+    musicGain = audioContext.createGain();
+    musicGain.gain.value = .025;
+    musicGain.connect(audioContext.destination);
+    const melody = [523.25, 659.25, 783.99, 659.25, 587.33, 698.46, 880, 698.46, 659.25, 783.99, 1046.5, 783.99, 587.33, 698.46, 783.99, 587.33];
+    const bass = [130.81, 146.83, 164.81, 146.83];
+    const output = musicGain;
+    const beat = () => {
+      const start = audioContext.currentTime;
+      const notes = [melody[musicStep % melody.length]];
+      if (musicStep % 2 === 0) notes.push(bass[Math.floor(musicStep / 4) % bass.length]);
+      notes.forEach((frequency, index) => {
+        const oscillator = audioContext.createOscillator();
+        const envelope = audioContext.createGain();
+        oscillator.type = index ? 'sine' : 'triangle';
+        oscillator.frequency.value = frequency;
+        envelope.gain.setValueAtTime(0, start);
+        envelope.gain.linearRampToValueAtTime(.8, start + .02);
+        envelope.gain.exponentialRampToValueAtTime(.001, start + .27);
+        oscillator.connect(envelope).connect(output);
+        oscillator.onended = () => { oscillator.disconnect(); envelope.disconnect(); };
+        oscillator.start(start);
+        oscillator.stop(start + .3);
+      });
+      musicStep++;
+    };
+    beat();
+    musicTimer = setInterval(beat, 300);
+  } catch {
+    stopMusic();
+    soundEnabled = false;
+    updateSoundButton();
+    announce('Music is unavailable in this browser. You can still play without it.');
+  }
+}
+
+function startWelcomeMusic() {
+  if (!soundChosen) {
+    soundChosen = true;
+    soundEnabled = true;
+    updateSoundButton();
+  }
+  startMusic();
+}
+
 $('#sound-toggle').addEventListener('click', () => {
+  soundChosen = true;
   soundEnabled = !soundEnabled;
   updateSoundButton();
-  if (soundEnabled) playTone('tap');
+  if (soundEnabled) startMusic();
+  else stopMusic();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopMusic();
+  else {
+    startMusic();
+    if (session) pollState();
+  }
 });
 
 async function request(path, body) {
@@ -152,6 +230,7 @@ $('#join-form').addEventListener('submit', async (event) => {
     return;
   }
   const button = $('#join-submit');
+  startWelcomeMusic();
   button.disabled = true;
   button.textContent = 'Joining your game…';
   $('#form-error').textContent = '';
@@ -171,9 +250,13 @@ $('#room-code').addEventListener('input', () => {
   $('#room-code').removeAttribute('aria-invalid');
 });
 $('#player-name').addEventListener('input', () => $('#player-name').removeAttribute('aria-invalid'));
-$('#host-button').addEventListener('click', () => $('#host-dialog').showModal());
+$('#host-button').addEventListener('click', () => {
+  startWelcomeMusic();
+  $('#host-dialog').showModal();
+});
 $('#close-host').addEventListener('click', () => $('#host-dialog').close());
 $('#create-room').addEventListener('click', async () => {
+  startWelcomeMusic();
   $('#create-room').disabled = true;
   $('#create-room').textContent = 'Making room for the team…';
   $('#host-error').textContent = '';
@@ -193,8 +276,8 @@ function resetHome() {
   clearInterval(countdownTimer);
   saveSession(null);
   currentState = null;
-  activeFeedback = null;
   pendingAnswer = null;
+  stopMusic();
   connectionFailures = 0;
   experience.replaceChildren();
   experience.classList.add('hidden');
@@ -220,14 +303,19 @@ async function pollState() {
   if (!session || pollBusy) return;
   clearTimeout(pollTimer);
   pollBusy = true;
+  const requestedSession = session;
   try {
-    const state = await request('state', { ...session, advance: !activeFeedback && !pendingAnswer });
+    const requestedAt = performance.now();
+    const state = await request('state', requestedSession);
+    if (session !== requestedSession) return;
     if (!session) return;
+    if (state.status === 'playing') roundEndsAt = performance.now() + Math.max(0, state.question.remainingMs - (performance.now() - requestedAt) / 2);
     currentState = state;
     connectionFailures = 0;
     $('#connection-notice')?.remove();
     renderState(state);
   } catch (error) {
+    if (session !== requestedSession) return;
     connectionFailures++;
     const fatal = error.status === 404 || error.status === 403;
     showConnectionError(error.message, fatal);
@@ -237,7 +325,7 @@ async function pollState() {
     pollBusy = false;
   }
   if (session && currentState?.status !== 'finished') {
-    pollTimer = setTimeout(pollState, Math.min(1500 * Math.max(1, connectionFailures), 6000));
+    pollTimer = setTimeout(pollState, Math.min(750 * Math.max(1, connectionFailures), 6000));
   }
 }
 
@@ -256,39 +344,37 @@ function makePanel(eyebrow, title) {
 }
 
 function renderState(state) {
-  if (pendingAnswer && !activeFeedback && state.status === 'playing') return;
-  if (state.role === 'player' && activeFeedback && state.status === 'playing') {
-    if (state.player.index === activeFeedback.index + 1) return;
-    activeFeedback = null;
-  }
-  const key = `${state.role}-${state.status}-${state.player?.index ?? ''}`;
+  if (pendingAnswer && (pendingAnswer.index !== state.index || state.status !== 'playing' || state.player?.selected !== null)) pendingAnswer = null;
+  const key = `${state.role}-${state.status}-${state.index}`;
   if (key === renderKey) {
-    if (state.role === 'host') updateHost(state);
+    if (state.status === 'lobby' && state.role === 'host') updateHost(state);
+    if (state.status === 'playing') updateLiveRound(state);
     return;
   }
   renderKey = key;
   if (state.status === 'finished') return renderResults(state);
-  if (state.role === 'host') return renderHost(state);
+  if (state.status === 'lobby' && state.role === 'host') return renderHost(state);
   if (state.status === 'lobby') return renderPlayerLobby(state);
-  if (state.player.done) return renderWaiting(state);
   renderQuestion(state);
 }
 
 function renderHost(state) {
-  const playing = state.status === 'playing';
-  const panel = makePanel(playing ? 'THE GAME IS ON' : 'HOST LOBBY', playing ? 'Let the Bennett instincts take over.' : 'A room full of Bennett experts.');
-  panel.append(element('p', 'muted', playing ? 'Everyone is playing privately. The podium unlocks when all players finish.' : 'Share this code with your team. Keep this tab open as your host screen.'));
+  const panel = makePanel('HOST LOBBY · LIVE TOGETHER', 'A room full of Bennett experts.');
+  panel.append(element('p', 'muted', 'Share the invite link below. Everyone joins on their own device; this host screen is ready to share on a call or projector.'));
   panel.append(element('div', 'room-code', state.code));
   const share = element('div', 'panel-actions');
+  const inviteUrl = new URL(location.pathname, location.origin);
+  inviteUrl.searchParams.set('room', state.code);
+  const invite = element('a', 'invite-link', inviteUrl.href);
+  invite.href = inviteUrl.href;
+  panel.append(invite);
   share.append(action('Copy invite link ↗', async (event) => {
     const button = event.currentTarget;
     try {
-      const url = new URL(location.pathname, location.origin);
-      url.searchParams.set('room', state.code);
-      await navigator.clipboard.writeText(url.href);
+      await navigator.clipboard.writeText(inviteUrl.href);
       announce('Invite link copied.');
       button.textContent = 'Copied ✓';
-    } catch { announce(`Copy is unavailable. Share code ${state.code} and this page address.`); }
+    } catch { announce('Copy is unavailable. Select the invite link above and copy it, or share this page address and game code.'); }
   }));
   panel.append(share);
   const heading = element('h2', '', 'Who’s in?');
@@ -303,30 +389,11 @@ function renderHost(state) {
   status.setAttribute('role', 'status');
   panel.append(status);
   const buttons = element('div', 'panel-actions');
-  const start = action(playing ? 'Reveal the podium →' : 'Everyone’s here. Let’s start →', () => hostAction(playing ? 'finish' : 'start'), true);
+  const start = action('Everyone’s here. Let’s start →', () => hostAction('start'), true);
   start.id = 'host-start';
   buttons.append(start);
-  if (playing) {
-    const end = action('End early…', () => {
-      const confirmation = $('#end-confirmation');
-      confirmation.classList.remove('hidden');
-      confirmation.querySelector('button').focus();
-    });
-    buttons.append(end);
-  }
   panel.append(buttons);
-  if (playing) {
-    const confirmation = element('div', 'rules-box hidden');
-    confirmation.id = 'end-confirmation';
-    confirmation.append(element('p', '', 'Reveal now? Unfinished players keep only their points earned so far. This cannot be undone.'));
-    confirmation.append(action('Yes, end and reveal', () => hostAction('finish', true)));
-    confirmation.append(action('Keep playing', () => {
-      confirmation.classList.add('hidden');
-      buttons.lastChild.focus();
-    }));
-    panel.append(confirmation);
-  }
-  panel.append(element('div', 'rules-box', '20 questions · 25 seconds each · Up to 1,000 points per correct answer. Seven real facts, thirteen playful hypotheticals. No account needed. Rooms expire after 6 hours; restarting the server clears games.'));
+  panel.append(element('div', 'rules-box', '20 researched questions · 10 seconds per round · Same question and answer order for everyone. Answers stay private until time runs out, then everyone sees who got it right. You choose when to start the next round. Rooms expire after 6 hours; restarting the server clears games.'));
   updateHost(state);
 }
 
@@ -339,21 +406,21 @@ function updateHost(state) {
     list.replaceChildren();
     state.players.forEach((player) => {
       const item = element('li', 'player-chip');
-      item.append(element('span', '', avatars[player.avatar].emoji), element('span', '', `${player.name}${player.done ? ' · Finished ✓' : ''}`));
+      item.append(element('span', '', avatars[player.avatar].emoji), element('span', '', player.name));
       list.append(item);
     });
   }
-  const finished = state.players.filter((player) => player.done).length;
-  const message = state.status === 'lobby' ? `${state.players.length} ${state.players.length === 1 ? 'player' : 'players'} joined${state.players.length ? ' — ready when you are.' : ' — waiting for the first legend.'}` : `${finished} of ${state.players.length} finished. ${finished === state.players.length ? 'Everyone is back. Time for the big reveal!' : 'Let everyone finish, or use “End early” if someone has left.'}`;
+  const message = `${state.players.length} ${state.players.length === 1 ? 'player' : 'players'} joined${state.players.length ? ' — ready when you are.' : ' — waiting for the first legend.'}`;
   if ($('#host-status').textContent !== message) $('#host-status').textContent = message;
-  $('#host-start').disabled = state.status === 'lobby' ? !state.players.length : finished !== state.players.length;
+  $('#host-start').disabled = !state.players.length;
 }
 
-async function hostAction(command, force = false) {
+async function hostAction(command) {
+  startWelcomeMusic();
   const buttons = experience.querySelectorAll('button');
   buttons.forEach((button) => { button.disabled = true; });
   try {
-    await request(command, { ...session, force });
+    await request(command, { ...session, index: currentState.index });
     await pollState();
     playTone(command === 'start' ? 'correct' : 'win');
   } catch (error) {
@@ -368,131 +435,162 @@ function renderPlayerLobby(state) {
   const panel = makePanel(`ROOM ${state.code} · YOU'RE IN`, `Looking good, ${state.player.name}.`);
   panel.append(element('div', 'waiting-art', avatars[state.player.avatar].emoji));
   panel.append(element('p', 'centered', 'Your host will start the game when the team is ready.'));
-  panel.append(element('div', 'rules-box', 'Your screen. Your answers. No spoilers. You have 25 seconds per question, and correct, faster answers earn more points. After each reveal, choose when to move on. Keep this tab open for the final podium.'));
-  panel.append(element('p', 'muted centered', 'Sound is optional — switch it on in the header for a little extra fanfare.'));
+  panel.append(element('div', 'rules-box', 'Everyone gets the same question at the same time. Pick one answer within 10 seconds. Your first choice is final, and correct, faster answers earn more points. When time runs out, see who got it right. The host starts the next question.'));
+  panel.append(element('p', 'muted centered', 'An original upbeat loop plays after you join. Use Music in the header to mute it at any time.'));
   announce('You joined the game. Waiting for the host to start.');
 }
 
 function renderQuestion(state) {
   const question = state.question;
   if (!question) return;
-  submitting = false;
-  const panel = makePanel(`QUESTION ${state.player.index + 1} OF ${state.total}`, question.prompt);
+  const revealing = state.status === 'reveal';
+  const panel = makePanel(`LIVE · QUESTION ${state.index + 1} OF ${state.total}`, question.prompt);
   const top = element('div', 'panel-top');
   const badge = element('div', 'player-badge');
-  badge.append(element('span', '', avatars[state.player.avatar].emoji), element('span', '', state.player.name));
-  const score = element('span', 'score-pill', `${state.player.score.toLocaleString()} pts`);
+  badge.append(element('span', '', state.role === 'host' ? '📡' : avatars[state.player.avatar].emoji), element('span', '', state.role === 'host' ? 'Host · Share this screen' : state.player.name));
+  const score = element('span', 'score-pill', state.role === 'host' ? `Room ${state.code}` : `${state.player.score.toLocaleString()} pts`);
   const timer = element('span', 'timer');
   timer.id = 'question-timer';
+  timer.setAttribute('role', 'timer');
   timer.setAttribute('aria-label', 'Time remaining');
-  timer.append(element('span', '', '◷'), element('span', 'time-value', '25s'));
+  timer.append(element('span', 'time-value', revealing ? '0s' : '10s'));
   top.append(badge, score, timer);
   panel.insertBefore(top, panel.firstChild);
   const progress = element('progress', 'progress-track');
   progress.max = state.total;
-  progress.value = state.player.index;
+  progress.value = state.index + (revealing ? 1 : 0);
   progress.setAttribute('aria-label', 'Quiz completion');
   panel.insertBefore(progress, panel.querySelector('.eyebrow'));
   panel.append(element('p', 'question-category', question.category));
   const grid = element('div', 'answer-grid');
   question.answers.forEach((answer, index) => {
-    const button = element('button', 'answer-button');
-    button.type = 'button';
+    const interactive = state.role === 'player' && !revealing;
+    const button = element(interactive ? 'button' : 'div', 'answer-button');
     button.append(element('span', 'answer-letter', 'ABCD'[index]), element('span', '', answer));
     button.dataset.answer = index;
-    button.addEventListener('click', () => submitAnswer(index));
+    if (interactive) {
+      button.type = 'button';
+      button.setAttribute('aria-pressed', 'false');
+      button.addEventListener('click', () => submitAnswer(index));
+    }
+    if (revealing && index === state.reveal.correctAnswer) {
+      button.classList.add('correct');
+      button.append(element('span', 'answer-mark', '✓ Correct'));
+    }
+    if (revealing && index === state.player?.selected) {
+      button.classList.add(index === state.reveal.correctAnswer ? 'correct' : 'incorrect');
+      button.append(element('span', 'answer-mark', 'Your answer'));
+    }
     grid.append(button);
   });
   panel.append(grid);
-  panel.append(element('p', 'muted', question.kind === 'fact' ? 'THE REAL DEAL · Based on a fact shared by the team.' : 'JUST FOR FUN · An imagined scenario, not a claim about Alex. Pick the most Bennett-energy answer.'));
-  const remainingAtSync = question.remainingMs;
-  const syncedAt = performance.now();
+  if (revealing) return renderRoundReveal(state, panel);
+  const status = element('p', 'muted');
+  status.id = 'round-status';
+  status.setAttribute('role', 'status');
+  panel.append(status);
+  panel.append(element('p', 'muted', 'One choice. Ten seconds. No answers revealed until the clock hits zero.'));
   let warned = false;
+  let expired = false;
   const tick = () => {
-    const remaining = Math.max(0, Math.ceil((remainingAtSync - (performance.now() - syncedAt)) / 1000));
+    const remaining = Math.max(0, Math.ceil((roundEndsAt - performance.now()) / 1000));
     timer.querySelector('.time-value').textContent = `${remaining}s`;
+    timer.setAttribute('aria-label', `${remaining} seconds remaining`);
     timer.classList.toggle('urgent', remaining <= 5);
     if (remaining <= 5 && !warned) { warned = true; announce('Five seconds or less remaining.'); }
-    if (!remaining) {
-      clearInterval(countdownTimer);
-      submitAnswer(-1);
+    updateLiveRound(currentState);
+    if (!remaining && !expired) {
+      expired = true;
+      announce('Time is up. Waiting for the server to reveal the answers.');
+      pollState();
     }
   };
   tick();
-  if (!submitting) countdownTimer = setInterval(tick, 200);
+  countdownTimer = setInterval(tick, 100);
   playTone('tap');
 }
 
+function updateLiveRound(state) {
+  if (state?.status !== 'playing') return;
+  const selected = state.player?.selected ?? pendingAnswer?.answer ?? null;
+  const expired = performance.now() >= roundEndsAt;
+  experience.querySelectorAll('button.answer-button').forEach((button) => {
+    const chosen = Number(button.dataset.answer) === selected;
+    button.disabled = selected !== null || expired;
+    button.classList.toggle('selected', chosen);
+    button.setAttribute('aria-pressed', String(chosen));
+  });
+  const answered = state.players.filter((player) => player.answered).length;
+  const message = expired ? 'Time’s up! Revealing the answers…' : state.role === 'host' ? `${answered} of ${state.players.length} answers locked in. Everyone has the full 10 seconds.` : pendingAnswer && !pendingAnswer.accepted ? 'Sending your answer… Your choice is saved here while we reconnect.' : selected !== null ? `Answer ${'ABCD'[selected]} locked in. Waiting for the reveal…` : 'Pick your answer before the timer reaches zero.';
+  if ($('#round-status') && $('#round-status').textContent !== message) $('#round-status').textContent = message;
+}
+
+function renderRoundReveal(state, panel) {
+  const reveal = state.reveal;
+  const feedback = element('div', 'answer-feedback');
+  feedback.append(element('h2', '', 'Time’s up. Who got it right?'), element('p', '', reveal.explanation));
+  const source = element('a', 'source-link', `Source: ${reveal.source.label}`);
+  source.href = reveal.source.url;
+  source.target = '_blank';
+  source.rel = 'noopener noreferrer';
+  source.append(element('span', 'sr-only', ' (opens in a new tab)'));
+  feedback.append(source);
+  const list = element('ul', 'round-results');
+  reveal.players.forEach((player) => {
+    const row = element('li', `round-result${player.correct ? ' round-correct' : ''}`);
+    const outcome = player.selected === null ? 'No answer' : player.correct ? 'Correct ✓' : `Incorrect · picked ${'ABCD'[player.selected]}`;
+    row.append(element('span', 'round-player', `${avatars[player.avatar].emoji} ${player.name}`), element('span', '', outcome), element('span', '', `+${player.points} · ${player.score.toLocaleString()} total`));
+    list.append(row);
+  });
+  feedback.append(list);
+  panel.append(feedback);
+  if (state.role === 'host') {
+    const controls = element('div', 'panel-actions');
+    controls.append(action(state.index === state.total - 1 ? 'Reveal final podium →' : 'Next question →', () => hostAction('next'), true));
+    panel.append(controls);
+  } else {
+    panel.append(element('p', 'muted', 'The host will start the next round when everyone is ready.'));
+  }
+  const correctCount = reveal.players.filter((player) => player.correct).length;
+  announce(`Time is up. Correct answer: ${state.question.answers[reveal.correctAnswer]}. ${correctCount} of ${reveal.players.length} players got it right.`);
+  playTone(state.role === 'player' && state.player.selected !== reveal.correctAnswer ? 'wrong' : 'correct');
+}
+
 async function submitAnswer(answer) {
-  if (submitting || activeFeedback || (!pendingAnswer && !currentState?.question)) return;
-  submitting = true;
-  clearInterval(countdownTimer);
-  pendingAnswer ??= { index: currentState.player.index, answer };
-  const { index } = pendingAnswer;
-  const buttons = experience.querySelectorAll('.answer-button');
-  buttons.forEach((button) => { button.disabled = true; });
+  if (submitting?.index === currentState?.index || currentState?.status !== 'playing' || currentState.player?.selected !== null || performance.now() >= roundEndsAt) return;
+  pendingAnswer ??= { index: currentState.index, answer };
+  const submission = pendingAnswer;
+  const answerSession = session;
+  submitting = submission;
+  updateLiveRound(currentState);
   try {
-    const result = await request('answer', { ...session, ...pendingAnswer });
-    pendingAnswer = null;
-    if (currentState?.status === 'finished') return;
-    if (result.finished) {
-      activeFeedback = null;
-      submitting = false;
-      renderKey = '';
-      return pollState();
-    }
-    activeFeedback = { ...result, index };
+    const result = await request('answer', { ...answerSession, index: submission.index, answer: submission.answer });
+    if (session !== answerSession || currentState?.index !== submission.index || currentState.status !== 'playing') return;
+    currentState.player.selected = result.selected;
+    submission.answer = result.selected;
+    submission.accepted = true;
     $('#answer-error')?.remove();
-    buttons.forEach((button, position) => {
-      if (position === result.correctAnswer) {
-        button.classList.add('correct');
-        button.append(element('span', '', '✓'));
-      } else if (position === result.selected) {
-        button.classList.add('incorrect');
-        button.append(element('span', '', '✕'));
-      }
-    });
-    const feedback = element('div', `answer-feedback${result.correct ? '' : ' wrong'}`);
-    const heading = element('h3', '', result.correct ? `That's Bennett. +${result.points} points!` : result.selected === -1 ? 'Time’s up. Meet the answer.' : 'Not quite. A little more Bennett lore.');
-    heading.tabIndex = -1;
-    feedback.append(heading, element('p', '', result.explanation));
-    feedback.append(action(index === currentState.total - 1 ? 'Head to the reunion →' : 'Next question →', () => {
-      activeFeedback = null;
-      submitting = false;
-      renderKey = '';
-      pollState();
-    }, true));
-    experience.querySelector('.game-panel').append(feedback);
-    heading.focus({ preventScroll: true });
-    announce(`${result.correct ? 'Correct.' : 'Incorrect.'} ${result.points} points earned. ${result.explanation}`);
-    playTone(result.correct ? 'correct' : 'wrong');
+    updateLiveRound(currentState);
+    announce(`Answer ${'ABCD'[result.selected]} locked in.`);
+    playTone('tap');
   } catch (error) {
-    submitting = false;
+    if (session !== answerSession || currentState?.index !== submission.index || currentState.status !== 'playing' || currentState.player.selected !== null) return;
     if (error.status === 409) {
       pendingAnswer = null;
-      activeFeedback = null;
-      renderKey = '';
       return pollState();
     }
     $('#answer-error')?.remove();
     const notice = element('div', 'connection-notice', error.message);
     notice.id = 'answer-error';
     notice.setAttribute('role', 'alert');
-    notice.append(action('Retry answer', () => submitAnswer(answer)));
+    notice.append(action('Retry same answer', () => submitAnswer(submission.answer)));
     experience.querySelector('.game-panel')?.append(notice);
+  } finally {
+    if (submitting === submission) submitting = null;
   }
 }
 
-function renderWaiting(state) {
-  const panel = makePanel('20 QUESTIONS. MAXIMUM BENNETT.', 'You’ve done your part. Now, the suspense.');
-  panel.append(element('div', 'waiting-art', '🏆'));
-  panel.append(element('p', 'centered', `${state.player.score.toLocaleString()} points · ${state.player.correct} of ${state.total} correct`));
-  panel.append(element('p', 'muted centered', 'Your score is saved in this room. Keep this tab open — the final leaderboard appears here when your host reveals the winner.'));
-  announce('Quiz complete. Waiting for the host to reveal the final leaderboard.');
-}
-
 function renderResults(state) {
-  activeFeedback = null;
   pendingAnswer = null;
   const leaders = state.leaderboard;
   const winners = leaders.filter((player) => player.score === leaders[0]?.score);
@@ -501,15 +599,15 @@ function renderResults(state) {
   celebration.setAttribute('aria-hidden', 'true');
   ['✦', '🏆', '✦'].forEach((symbol) => celebration.append(element('span', '', symbol)));
   panel.append(celebration);
-  panel.append(element('p', 'muted centered', 'New Hampshire roots. Industrial design instincts. A team that knows a little more about Alex.'));
+  panel.append(element('p', 'muted centered', 'Twenty live rounds. A little design knowledge. A lot of Bennett energy.'));
   const list = element('ol', 'leaderboard');
   leaders.forEach((player) => {
     const row = element('li', 'leader-row');
-    row.append(element('span', '', `#${player.rank}`), element('span', 'leader-avatar', avatars[player.avatar].emoji), element('span', 'leader-name', `${player.name}${player.token === session.token ? ' (you)' : ''}`), element('span', 'leader-points', `${player.score.toLocaleString()} pts`));
+    row.append(element('span', '', `#${player.rank}`), element('span', 'leader-avatar', avatars[player.avatar].emoji), element('span', 'leader-name', `${player.name}${player.isYou ? ' (you)' : ''}`), element('span', 'leader-points', `${player.score.toLocaleString()} pts`));
     list.append(row);
   });
   panel.append(list);
-  panel.append(element('p', 'muted', 'Correct answers earn 600–1,000 points based on speed. Equal scores share a place. Hypothetical answers were just for fun, not biographical facts.'));
+  panel.append(element('p', 'muted', 'Correct answers earn 600–1,000 points based on speed. Equal scores share a place. Sources include Alexander’s public portfolio, Microsoft documentation, and Visit Rochester. Portfolio entries do not imply sole authorship or a shipped product.'));
   panel.append(action('Back to the lobby ↗', resetHome, true));
   playTone('win');
   announce(winners.length > 1 ? 'The results are in. It is a tie!' : `The results are in. ${leaders[0]?.name} wins!`);
