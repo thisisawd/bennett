@@ -6,33 +6,44 @@
   <meta name="theme-color" content="#bd3039">
   <meta name="description" content="44 questions about Alexander Bennett, from Microsoft design projects to Manchester roots and one very good dog. Play up to 30 together on your own devices.">
   <title>The Bennett Quiz — How well do you know Alexander?</title>
-  <link rel="stylesheet" href="style.css?v=portfolio-media">
+  <link rel="stylesheet" href="style.css?v=themes-motion">
   <script src="config.js?v=bank-60" defer></script>
   <script src="nh-map.js?v=bank-60" defer></script>
   <script src="europe-map.js?v=map-reveals" defer></script>
   <script src="maps.js?v=map-reveals" defer></script>
-  <script src="app.js?v=portfolio-media" defer></script>
+  <script src="app.js?v=themes-motion" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <a class="brand" href="./" aria-label="The Bennett Quiz home">
-      <span class="brand-icon" aria-hidden="true">b<span><svg class="question-mark" viewBox="0 0 32 36" aria-hidden="true" focusable="false"><path d="M7 10c0-11 19-11 19 0 0 7-10 7-10 14m0 7v1"/></svg></span></span>
+      <span class="brand-icon" aria-hidden="true">b<span><svg class="question-mark" viewBox="0 0 32 36" aria-hidden="true" focusable="false"><path class="question-mark-outline" d="M7 10c0-11 19-11 19 0 0 7-10 7-10 14m0 7v1"/><path d="M7 10c0-11 19-11 19 0 0 7-10 7-10 14m0 7v1"/></svg></span></span>
       <span>the bennett quiz<span class="brand-sub">A THISISAWD ORIGINAL</span></span>
     </a>
     <nav class="header-actions" aria-label="Main navigation">
+      <div class="header-picker theme-picker">
+        <label for="theme-select">Theme</label>
+        <select id="theme-select">
+          <option value="red-sox">Red Sox Red</option>
+          <option value="ll-bean">LL Bean Green</option>
+          <option value="rit">RIT Orange</option>
+        </select>
+      </div>
       <div class="music-controls">
-        <div class="music-picker">
+        <div class="header-picker music-picker">
           <label for="music-track">Music track</label>
-          <select id="music-track">
+          <select id="music-track" aria-describedby="music-hint">
             <option value="kahoot">Kahoot Inspired</option>
             <option value="lofi">Low Fi Beats</option>
             <option value="radio">New England Radio</option>
+            <option value="noah">Noah Kahan Radio</option>
+            <option value="taylor">Taylor Swift Radio</option>
           </select>
+          <span class="sr-only" id="music-hint">Original synthesized instrumentals, not artist recordings or live radio.</span>
         </div>
         <button class="button button-outline button-small sound-button" id="sound-toggle" type="button" aria-pressed="false" aria-label="Music off. Selected track: Kahoot Inspired">♫ Music off</button>
       </div>
-      <button class="button button-outline button-small" id="host-button" type="button">Host a game <span aria-hidden="true">↗</span></button>
+      <button class="button button-primary button-small" id="host-button" type="button">Host</button>
     </nav>
   </header>
 
@@ -48,35 +59,35 @@
           <span><svg class="question-mark" viewBox="0 0 32 36" aria-hidden="true" focusable="false"><path d="M7 10c0-11 19-11 19 0 0 7-10 7-10 14m0 7v1"/></svg> All the bragging rights</span>
         </div>
 
-        <div class="bennett-art" role="img" aria-label="Playful illustrated Bennett starter pack: New Hampshire mountains, a baseball cap, a dog, and design sketches.">
+        <div class="bennett-art" id="bennett-art" role="img" aria-label="Playful illustrated Bennett starter pack: New Hampshire mountains, a baseball cap, a dog, and design sketches.">
           <div class="art-grid" aria-hidden="true"></div>
           <span class="art-note art-note-top" aria-hidden="true">THE BENNETT STARTER PACK</span>
           <svg class="starter-illustration" viewBox="0 0 640 280" aria-hidden="true" focusable="false">
-            <path d="M66 224 155 79 205 151 245 95 330 224Z" fill="#bc717b" stroke="#0c2340" stroke-width="3" stroke-linejoin="round"/>
+            <path class="art-mountain" d="M66 224 155 79 205 151 245 95 330 224Z" fill="#bc717b" stroke="#0c2340" stroke-width="3" stroke-linejoin="round"/>
             <path d="m127 125 28-46 31 45-21-9-13 12-10-12Z" fill="#fffdf3" stroke="#0c2340" stroke-width="2"/>
             <path d="m214 143 31-48 32 48-18-8-14 11-13-13Z" fill="#fffdf3" stroke="#0c2340" stroke-width="2"/>
             <path d="M53 224h532" fill="none" stroke="#0c2340" stroke-width="3" stroke-linecap="round"/>
-            <g transform="rotate(-12 355 128)">
-              <path d="M284 143c0-70 18-96 67-96s70 32 70 96Z" fill="#bd3039" stroke="#0c2340" stroke-width="3"/>
-              <path d="M274 141c46-9 111-8 157 0 37 6 46 20 26 29-19 8-61-4-89-6-44-3-69 7-86 2-17-5-23-18-8-25Z" fill="#8f1725" stroke="#0c2340" stroke-width="3"/>
+            <g class="art-float art-cap"><g transform="rotate(-12 355 128)">
+              <path class="art-cap-crown" d="M284 143c0-70 18-96 67-96s70 32 70 96Z" fill="#bd3039" stroke="#0c2340" stroke-width="3"/>
+              <path class="art-cap-brim" d="M274 141c46-9 111-8 157 0 37 6 46 20 26 29-19 8-61-4-89-6-44-3-69 7-86 2-17-5-23-18-8-25Z" fill="#8f1725" stroke="#0c2340" stroke-width="3"/>
               <path d="M353 50c-14 19-16 46-14 87" fill="none" stroke="#0c2340" stroke-width="2"/>
-              <text x="355" y="115" text-anchor="middle" fill="#fff8e9" font-family="Georgia, serif" font-weight="bold" font-size="54">B</text>
-              <path d="M290 150c32-5 67-5 95-1" fill="none" stroke="#ee8190" stroke-width="3" stroke-linecap="round"/>
-            </g>
-            <g transform="rotate(9 486 187)">
+              <text class="art-cap-letter" x="355" y="115" text-anchor="middle" fill="#fff8e9" font-family="Georgia, serif" font-weight="bold" font-size="54">B</text>
+              <path class="art-cap-stitch" d="M290 150c32-5 67-5 95-1" fill="none" stroke="#ee8190" stroke-width="3" stroke-linecap="round"/>
+            </g></g>
+            <g class="art-float art-notebook"><g transform="rotate(9 486 187)">
               <rect x="436" y="139" width="116" height="88" rx="5" fill="#fffdf3" stroke="#0c2340" stroke-width="3"/>
-              <path d="M452 159h59m-59 9h35m-29 31 14-18 25 6 10 21-40 3Z" fill="none" stroke="#a75462" stroke-width="2" stroke-linecap="round"/>
+              <path class="art-sketch" d="M452 159h59m-59 9h35m-29 31 14-18 25 6 10 21-40 3Z" fill="none" stroke="#a75462" stroke-width="2" stroke-linecap="round"/>
               <path d="m510 191 6-7 32 27-6 7Z" fill="#eabf54" stroke="#0c2340" stroke-width="2"/>
               <path d="m510 191-2 9 8-2" fill="#0c2340"/>
-            </g>
-            <g>
+            </g></g>
+            <g class="art-float art-dog">
               <path d="M224 224v-43c0-26 20-44 47-44s46 18 46 44v43" fill="#e4b575" stroke="#0c2340" stroke-width="3"/>
               <path d="M239 143c-19-12-29-3-33 16-6 25-2 41 10 40 14-1 19-23 23-56Zm62 0c19-12 29-3 33 16 6 25 2 41-10 40-14-1-19-23-23-56Z" fill="#b67c4e" stroke="#0c2340" stroke-width="3"/>
               <ellipse cx="271" cy="193" rx="22" ry="17" fill="#fff4d8"/>
               <circle cx="253" cy="174" r="4" fill="#0c2340"/><circle cx="288" cy="174" r="4" fill="#0c2340"/>
               <path d="M263 187q8-6 16 0l-8 8Z" fill="#0c2340"/>
               <path d="M271 195v6m-11-2q11 13 22 0" fill="none" stroke="#0c2340" stroke-width="2.5" stroke-linecap="round"/>
-              <path d="M231 218h78" fill="none" stroke="#bd3039" stroke-width="9"/>
+              <path class="art-collar" d="M231 218h78" fill="none" stroke="#bd3039" stroke-width="9"/>
               <circle cx="272" cy="220" r="7" fill="#edc85f" stroke="#0c2340" stroke-width="2"/>
             </g>
             <text x="84" y="98" class="illustration-question" transform="rotate(-12 96 80)">?</text>
@@ -86,13 +97,16 @@
           <span class="art-sticker" aria-hidden="true">100%<br>BENNETT<br><span>0% boring</span></span>
           <span class="art-note art-note-bottom" aria-hidden="true">NEW ENGLAND ROOTS. MAIN CHARACTER ENERGY.</span>
         </div>
+        <div class="art-motion-controls">
+          <button class="art-motion-toggle" id="art-motion-toggle" type="button" aria-controls="bennett-art">Pause illustration</button>
+        </div>
       </div>
 
       <aside class="join-area" aria-labelledby="join-title">
         <div class="join-card">
           <div class="card-heading"><span class="mini-question" aria-hidden="true"><svg class="question-mark" viewBox="0 0 32 36" aria-hidden="true" focusable="false"><path d="M7 10c0-11 19-11 19 0 0 7-10 7-10 14m0 7v1"/></svg></span><span class="tag">YOU'RE INVITED</span></div>
-          <h2 id="join-title">Get in on the fun.</h2>
-          <p class="card-description">Your Bennett knowledge has been training<br class="desktop-break"> for this moment.</p>
+          <h2 id="join-title">Your quiz era starts here.</h2>
+          <p class="card-description">Big Bennett energy.<br>Suspiciously little preparation required.</p>
           <form id="join-form" novalidate>
             <div class="field">
               <label for="room-code">Game code <span>FROM YOUR HOST</span></label>
@@ -120,9 +134,9 @@
 
     <section class="how-it-works" id="how-it-works" aria-labelledby="how-title">
       <div class="how-intro"><p class="eyebrow">A LITTLE FRIENDLY COMPETITION</p><h2 id="how-title">Big Bennett energy.<br>Small learning curve.</h2></div>
-      <article class="how-step"><span class="step-number">01</span><h3>Make yourself known.</h3><p>Grab the code, drop your name,<br class="desktop-break"> and find your emoji identity.</p></article>
-      <article class="how-step"><span class="step-number">02</span><h3>Beat the live countdown.</h3><p>Your host picks the timer and game length.<br class="desktop-break"> Lock in one answer on your device.</p></article>
-      <article class="how-step"><span class="step-number">03</span><h3>Give the scores their moment.</h3><p>Time’s up: see the answer.<br class="desktop-break"> Next shows player results; Next again starts the next question.</p></article>
+      <article class="how-step"><span class="step-number">01</span><h3>Make yourself known.</h3><p>Grab the code. Pick your emoji. Pretend you studied.</p></article>
+      <article class="how-step"><span class="step-number">02</span><h3>Beat the live countdown.</h3><p>Lock in your answer before the timer wins.</p></article>
+      <article class="how-step"><span class="step-number">03</span><h3>Give the scores their moment.</h3><p>Answers. Scores. Bragging rights. In that order.</p></article>
     </section>
     <div class="runtime-notice hidden" id="runtime-notice" role="status"></div>
     <p class="sr-only" id="announcement" role="status" aria-live="polite"></p>
@@ -131,9 +145,9 @@
 
   <dialog class="host-dialog" id="host-dialog" aria-labelledby="host-title">
     <div class="dialog-top"><span class="eyebrow">YOU'RE RUNNING THE SHOW</span><button class="icon-button" id="close-host" type="button" aria-label="Close host setup">×</button></div>
-    <h2 id="host-title">Bring the team together.</h2>
-    <p>Create a room and share the invite link. Put your host screen on the big screen or share it on a call. Everyone answers separately on their own device.</p>
-    <p class="host-note">Pick 1–30 questions. Start with Alex’s hometown, race through a nine-piece photo puzzle, then meet his dog. The puzzle gets 60 seconds; both maps get 20. Alex’s personal stories and photos lead the mix, with six projects from his current portfolio in the default 20-question game and just a little Rochester trivia. Each photo or video gets one question, and Presenter+ gets one product round. Patent questions include real diagrams and plain-English context. Videos have Play controls and at least 30 seconds to watch and answer; GIFs have Play and Stop controls. Map guesses reveal with animated lines, names, and distances in miles. The host shows the answer, then the points, then starts the next round. Choose an original soundtrack in the header, or turn Music off.</p>
+    <h2 id="host-title">Your room. Their reputation.</h2>
+    <p>Create a room. Share the code. See who really knows Bennett.</p>
+    <p class="host-note">Up to 30 questions. Photos, puzzles, and a few plot twists. You run the rounds; we keep score.</p>
     <p class="form-error" id="host-error" role="alert"></p>
     <button class="button button-primary" id="create-room" type="button">Create a game <span aria-hidden="true">→</span></button>
   </dialog>

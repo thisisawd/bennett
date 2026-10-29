@@ -59,6 +59,29 @@ let connectionFailures = 0;
 let submitting = null;
 
 const announce = (text) => { $('#announcement').textContent = text; };
+const themes = { 'red-sox': 'Red Sox Red', 'll-bean': 'LL Bean Green', rit: 'RIT Orange' };
+const applyTheme = (value) => {
+  const selected = Object.hasOwn(themes, value) ? value : 'red-sox';
+  document.documentElement.dataset.theme = selected;
+  $('#theme-select').value = selected;
+  $('meta[name="theme-color"]').setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--primary').trim());
+};
+try {
+  applyTheme(localStorage.getItem('bennett-theme'));
+} catch {
+  applyTheme('red-sox');
+}
+$('#theme-select').addEventListener('change', (event) => {
+  applyTheme(event.currentTarget.value);
+  const selected = document.documentElement.dataset.theme;
+  try {
+    localStorage.setItem('bennett-theme', selected);
+  } catch {
+    announce(`${themes[selected]} selected for this visit.`);
+    return;
+  }
+  announce(`${themes[selected]} selected.`);
+});
 const element = (tag, className, text) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -101,7 +124,8 @@ placeholder.disabled = true;
 placeholder.selected = true;
 avatarSelect.append(placeholder);
 avatars.slice(5).forEach(({ emoji, name }, index) => {
-  const option = element('option', '', `${emoji} ${name}`);
+  const option = element('option', '', emoji);
+  option.setAttribute('aria-label', name);
   option.value = String(index + 5);
   avatarSelect.append(option);
 });
@@ -138,6 +162,22 @@ const musicTracks = {
     melody: [
       [74, 76, 78, null, 76, 74, 69, null], [71, null, 74, 76, 74, 71, 67, null],
       [74, null, 78, 81, 78, 74, 71, null], [73, 76, null, 81, 76, 73, 69, null],
+    ],
+  },
+  noah: {
+    name: 'Noah Kahan Radio', bpm: 94,
+    chords: [[55, 59, 62], [52, 55, 59], [48, 52, 55], [50, 54, 57]],
+    melody: [
+      [71, null, 74, 72, 71, null, 67, 69], [67, 71, null, 74, 71, null, 67, null],
+      [72, null, 76, 74, 72, 67, null, 64], [69, null, 74, 76, 74, 69, 66, null],
+    ],
+  },
+  taylor: {
+    name: 'Taylor Swift Radio', bpm: 112,
+    chords: [[60, 64, 67, 71], [57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 69]],
+    melody: [
+      [79, 76, null, 74, 76, null, 81, 79], [76, null, 72, 74, 76, 79, null, 81],
+      [77, 76, 72, null, 69, 72, null, 76], [74, null, 79, 81, 83, 79, 74, null],
     ],
   },
 };
@@ -254,6 +294,21 @@ function startMusic() {
             if (step === 0 || step === 5) synthNote(43, nextAt, .18, .3, 'sine', output, 27);
             if (step % 2) synthPercussion(nextAt, false, output, .35);
             if (step % 4 === 2) synthPercussion(nextAt, true, output, .45);
+          } else if (trackId === 'noah') {
+            synthNote(chord[step % 3], nextAt, .48, .13, 'triangle', output);
+            if (step === 0 || step === 4) synthNote(chord[0] - 12, nextAt, .55, .25, 'sine', output);
+            if (melody[bar][step] !== null) synthNote(melody[bar][step], nextAt, .32, .11, 'sine', output);
+            if (step % 4 === 2) synthPercussion(nextAt, true, output, .3);
+            if (step % 2) synthPercussion(nextAt, false, output, .2);
+          } else if (trackId === 'taylor') {
+            if (step === 0) chord.forEach((note) => synthNote(note, nextAt, stepDuration * 7, .05, 'sine', output));
+            if (step % 2 === 0) {
+              synthNote(chord[step === 4 ? 2 : 0] - 12, nextAt, .24, .26, 'triangle', output);
+              synthNote(45, nextAt, .15, .3, 'sine', output, 28);
+            }
+            if (melody[bar][step] !== null) synthNote(melody[bar][step], nextAt, .2, .14, 'triangle', output);
+            synthPercussion(nextAt, false, output, .35);
+            if (step % 4 === 2) synthPercussion(nextAt, true, output, .55);
           } else {
             if (step % 2 === 0) chord.forEach((note, index) => synthNote(note, nextAt + index * .009, .4, .09, 'triangle', output));
             if (step === 0 || step === 4) {
@@ -302,6 +357,11 @@ $('#music-track').addEventListener('change', (event) => {
   updateSoundButton();
   if (soundEnabled) startMusic();
   announce(`${musicTracks[musicTrack].name} selected.${soundEnabled ? '' : ' Turn Music on to listen.'}`);
+});
+$('#art-motion-toggle').addEventListener('click', (event) => {
+  const paused = $('#bennett-art').classList.toggle('motion-paused');
+  event.currentTarget.textContent = paused ? 'Resume illustration' : 'Pause illustration';
+  announce(paused ? 'Illustration paused.' : 'Illustration playing.');
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) stopMusic();
@@ -518,8 +578,8 @@ function renderState(state) {
 }
 
 function renderHost(state) {
-  const panel = makePanel('HOST LOBBY · LIVE TOGETHER', 'A room full of Bennett experts.');
-  panel.append(element('p', 'muted', 'Share the invite link below. Everyone joins on their own device; this host screen is ready to share on a call or projector.'));
+  const panel = makePanel('HOST LOBBY', 'Bennett brain trust. Assemble.');
+  panel.append(element('p', 'muted', 'Share the code. Gather your challengers. Mild overconfidence encouraged.'));
   panel.append(element('div', 'room-code', state.code));
   const share = element('div', 'panel-actions');
   const inviteUrl = new URL(location.pathname, location.origin);
@@ -549,7 +609,7 @@ function renderHost(state) {
   status.setAttribute('role', 'status');
   panel.append(status);
   const buttons = element('div', 'panel-actions');
-  const start = action('Everyone’s here. Let’s start →', () => hostAction('start'), true);
+  const start = action('Let’s quiz →', () => hostAction('start'), true);
   start.id = 'host-start';
   buttons.append(start);
   panel.append(buttons);
@@ -563,19 +623,19 @@ function renderHost(state) {
 function updateLobbyRules(state) {
   const rules = $('#lobby-rules');
   if (!rules) return;
-  const text = `${state.settings.questionCount} questions from a bank of ${state.bankSize} · ${state.settings.roundSeconds} seconds per regular answer. The puzzle gets 60 seconds, maps get 20 seconds, and videos get at least 30 seconds. First, pin Alex’s hometown; round 2 is the nine-piece puzzle, and round 3 introduces his dog. Shorter games stop at the chosen count. Alex’s photos, personal stories, and portfolio lead the mix, with just a little Rochester trivia. Questions do not repeat. The first completed puzzle wins that round. Map guesses reveal at time-up with animated lines and distances in miles. The host clicks Next for player points, then Next again for the following question. Personal facts come from the host; other trivia has linked sources. Rooms expire after 6 hours; restarting the server clears games.`;
+  const text = `${state.settings.questionCount} questions · ${state.settings.roundSeconds}s regular rounds. Puzzle: 60s. Maps: 20s. Videos: 30s+. ${state.role === 'host' ? 'Next shows scores; Next again starts the next question.' : 'Fast answers. Bigger points. The host sets the pace.'}`;
   if (rules.textContent !== text) rules.textContent = text;
 }
 
 function renderGameSettings(state, panel) {
-  panel.append(element('h2', '', 'Make it your game.'));
+  panel.append(element('h2', '', 'Set the stakes.'));
   const form = element('form', 'lobby-settings');
   form.id = 'settings-form';
   form.noValidate = true;
   const fields = element('div', 'settings-fields');
   [
-    { id: 'round-seconds', label: 'Seconds per regular answer', min: 5, max: 120, value: state.settings.roundSeconds, hint: '5–120 seconds. Puzzle: 60 seconds. Maps: 20 seconds. Video: at least 30 seconds.' },
-    { id: 'question-count', label: 'Number of questions', min: 1, max: state.maxQuestions, value: state.settings.questionCount, hint: `1–${state.maxQuestions} questions, picked from the full bank. No repeats within a game.` },
+    { id: 'round-seconds', label: 'Seconds per answer', min: 5, max: 120, value: state.settings.roundSeconds, hint: '5–120 seconds. Special rounds use the timers below.' },
+    { id: 'question-count', label: 'Questions', min: 1, max: state.maxQuestions, value: state.settings.questionCount, hint: `1–${state.maxQuestions}. No repeats. No mercy.` },
   ].forEach(({ id, label: text, min, max, value, hint }) => {
     const field = element('div', 'field');
     const label = element('label', '', text);
@@ -592,7 +652,7 @@ function renderGameSettings(state, panel) {
     input.addEventListener('input', () => {
       form.dataset.dirty = 'true';
       input.removeAttribute('aria-invalid');
-      $('#settings-status').textContent = 'Settings changed. Save them, or start the game to apply them.';
+      $('#settings-status').textContent = 'Unsaved changes. Save, or start to use them.';
     });
     const description = element('p', 'field-hint', hint);
     description.id = `${id}-hint`;
@@ -602,7 +662,7 @@ function renderGameSettings(state, panel) {
   const error = element('p', 'form-error');
   error.id = 'settings-error';
   error.setAttribute('role', 'alert');
-  const save = element('button', 'button button-outline', 'Save game settings');
+  const save = element('button', 'button button-outline', 'Save settings');
   save.id = 'save-settings';
   save.type = 'submit';
   const status = element('p', 'muted');
@@ -615,19 +675,19 @@ function renderGameSettings(state, panel) {
     if (!values || settingsBusy || hostBusy) return;
     settingsBusy = true;
     save.disabled = true;
-    save.textContent = 'Saving settings…';
+    save.textContent = 'Saving…';
     fields.querySelectorAll('input').forEach((input) => { input.disabled = true; });
     updateHost(currentState);
     try {
       await request('settings', { ...session, ...values });
-      status.textContent = 'Settings saved. Players will see the updated round details.';
+      status.textContent = 'Saved. Let the guessing begin.';
       await pollState();
     } catch (failure) {
       error.textContent = `${failure.message} Your settings are preserved. Save again to retry.`;
     } finally {
       settingsBusy = false;
       save.disabled = false;
-      save.textContent = 'Save game settings';
+      save.textContent = 'Save settings';
       fields.querySelectorAll('input').forEach((input) => { input.disabled = false; });
       if (currentState?.status === 'lobby') updateHost(currentState);
     }
@@ -665,7 +725,7 @@ function updateHost(state) {
       list.append(item);
     });
   }
-  const message = `${state.players.length} ${state.players.length === 1 ? 'player' : 'players'} joined${state.players.length ? ' — ready when you are.' : ' — waiting for the first legend.'}`;
+  const message = `${state.players.length} ${state.players.length === 1 ? 'challenger' : 'challengers'} in.${state.players.length ? ' Ready when you are.' : ' Send the code. Summon the legends.'}`;
   if ($('#host-status').textContent !== message) $('#host-status').textContent = message;
   $('#host-start').disabled = !state.players.length || hostBusy || settingsBusy;
   const form = $('#settings-form');
@@ -701,15 +761,15 @@ async function hostAction(command) {
 }
 
 function renderPlayerLobby(state) {
-  const panel = makePanel(`ROOM ${state.code} · YOU'RE IN`, `Looking good, ${state.player.name}.`);
+  const panel = makePanel(`ROOM ${state.code} · YOU'RE IN`, `${state.player.name}, game face on.`);
   panel.append(element('div', 'waiting-art', avatars[state.player.avatar].emoji));
-  panel.append(element('p', 'centered', 'Your host will start the game when the team is ready.'));
+  panel.append(element('p', 'centered', 'Your host has the launch button. Bring your questionable confidence.'));
   const rules = element('p', 'rules-box');
   rules.id = 'lobby-rules';
   rules.setAttribute('role', 'status');
   panel.append(rules);
   updateLobbyRules(state);
-  panel.append(element('p', 'muted centered', 'Choose Kahoot Inspired, Low Fi Beats, or New England Radio in the header. These are original synthesized tracks, not live radio or recordings of existing songs. Music gets quieter during questions; use Music to mute it.'));
+  panel.append(element('p', 'muted centered', 'Pick a soundtrack up top. Original instrumentals, not artist recordings.'));
   announce('You joined the game. Waiting for the host to start.');
 }
 
