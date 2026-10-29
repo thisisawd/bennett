@@ -6,15 +6,37 @@
   <meta name="theme-color" content="#bd3039">
   <meta name="description" content="44 questions about Alexander Bennett, from Microsoft design projects to Manchester roots and one very good dog. Play up to 30 together on your own devices.">
   <title>The Bennett Quiz — How well do you know Alexander?</title>
-  <link rel="stylesheet" href="style.css?v=mobile-speech">
+  <link rel="stylesheet" href="style.css?v=windows-95">
   <script src="config.js?v=bank-60" defer></script>
   <script src="nh-map.js?v=bank-60" defer></script>
   <script src="europe-map.js?v=map-reveals" defer></script>
   <script src="maps.js?v=map-reveals" defer></script>
-  <script src="app.js?v=mobile-speech" defer></script>
+  <script src="app.js?v=windows-95" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
+  <svg class="retro-symbols" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="retro-computer" viewBox="0 0 16 16">
+      <path class="retro-pixel-edge" d="M1 1h13v10H9v1h6v3H1v-3h5v-1H1Z"/>
+      <path class="retro-pixel-face" d="M2 2h11v8H2Zm5 9h1v1H7Zm-5 2h12v1H2Z"/>
+      <path class="retro-pixel-screen" d="M3 3h9v6H3Z"/>
+      <path class="retro-pixel-light" d="M3 3h9v1H3Zm0 1h1v4H3Z"/>
+      <path class="retro-pixel-edge" d="M4 13h1v1H4Zm2 0h1v1H6Zm2 0h1v1H8Zm2 0h1v1h-1Z"/>
+    </symbol>
+    <symbol id="retro-folder" viewBox="0 0 16 16">
+      <path class="retro-pixel-edge" d="M1 3h5l2 2h7v9H1Z"/>
+      <path class="retro-pixel-folder" d="M2 4h3l2 2h7v7H2Z"/>
+      <path class="retro-pixel-light" d="M2 4h3v1H2Zm0 2h12v1H2Z"/>
+      <path class="retro-pixel-edge" d="M3 8h1v4H3Zm2 0h1v4H5Z"/>
+    </symbol>
+    <symbol id="retro-picture" viewBox="0 0 16 16">
+      <path class="retro-pixel-edge" d="M1 1h14v14H1Z"/>
+      <path class="retro-pixel-light" d="M2 2h12v12H2Z"/>
+      <path class="retro-pixel-screen" d="M3 3h10v9H3Z"/>
+      <path class="retro-pixel-folder" d="M10 4h2v2h-2Z"/>
+      <path class="retro-pixel-edge" d="m3 11 4-5 3 4 2-2 1 4H3Z"/>
+    </symbol>
+  </svg>
   <header class="site-header">
     <a class="brand" href="./" aria-label="The Bennett Quiz home">
       <span class="brand-icon" aria-hidden="true">b<span><svg class="question-mark" viewBox="0 0 32 36" aria-hidden="true" focusable="false"><path class="question-mark-outline" d="M7 10c0-11 19-11 19 0 0 7-10 7-10 14m0 7v1"/><path d="M7 10c0-11 19-11 19 0 0 7-10 7-10 14m0 7v1"/></svg></span></span>
@@ -30,6 +52,7 @@
               <option value="red-sox">Red Sox Red</option>
               <option value="ll-bean">LL Bean Green</option>
               <option value="rit">RIT Orange</option>
+              <option value="win95">Windows 95</option>
             </select>
           </div>
           <div class="header-picker music-picker">
@@ -53,6 +76,11 @@
   <main id="main">
     <section class="landing" id="landing" aria-labelledby="hero-title">
       <div class="hero-copy">
+        <div class="retro-window-bar" aria-hidden="true">
+          <svg class="retro-icon" focusable="false"><use href="#retro-computer"/></svg>
+          <span class="retro-window-name">Bennett.exe</span>
+          <span class="retro-window-filetype">THE ORIGINAL QUIZ PROGRAM</span>
+        </div>
         <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> GOOD TEAMMATE. GREAT QUIZ MATERIAL.</p>
         <h1 id="hero-title">You know Alex.<br>But do you<br><span class="headline-highlight">know Bennett?</span></h1>
         <p class="hero-description">The designer. The Manchester roots. The RIT years.<br>Big ideas. Good stories. One very good dog.<br class="desktop-break"> Name the design, spot the bike, or pin the place.</p>
@@ -63,6 +91,11 @@
         </div>
 
         <div class="bennett-art" id="bennett-art" role="img" aria-label="Playful illustrated Bennett starter pack: New Hampshire mountains, a baseball cap, a dog, and design sketches.">
+          <div class="retro-window-bar retro-image-bar" aria-hidden="true">
+            <svg class="retro-icon" focusable="false"><use href="#retro-picture"/></svg>
+            <span class="retro-window-name">starter-pack.bmp</span>
+            <span class="retro-window-filetype">BITMAP IMAGE</span>
+          </div>
           <div class="art-grid" aria-hidden="true"></div>
           <span class="art-note art-note-top" aria-hidden="true">THE BENNETT STARTER PACK</span>
           <svg class="starter-illustration" viewBox="0 0 640 280" aria-hidden="true" focusable="false">
@@ -107,6 +140,11 @@
 
       <aside class="join-area" aria-labelledby="join-title">
         <div class="join-card">
+          <div class="retro-window-bar" aria-hidden="true">
+            <svg class="retro-icon" focusable="false"><use href="#retro-folder"/></svg>
+            <span class="retro-window-name">Join a game</span>
+            <span class="retro-window-filetype">MULTIPLAYER</span>
+          </div>
           <div class="card-heading"><span class="mini-question" aria-hidden="true"><svg class="question-mark" viewBox="0 0 32 36" aria-hidden="true" focusable="false"><path d="M7 10c0-11 19-11 19 0 0 7-10 7-10 14m0 7v1"/></svg></span><span class="tag">YOU'RE INVITED</span></div>
           <h2 id="join-title">Your quiz era starts here.</h2>
           <p class="card-description">Big Bennett energy.<br>Suspiciously little preparation required.</p>

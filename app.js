@@ -61,7 +61,7 @@ let connectionFailures = 0;
 let submitting = null;
 
 const announce = (text) => { $('#announcement').textContent = text; };
-const themes = { 'red-sox': 'Red Sox Red', 'll-bean': 'LL Bean Green', rit: 'RIT Orange' };
+const themes = { 'red-sox': 'Red Sox Red', 'll-bean': 'LL Bean Green', rit: 'RIT Orange', win95: 'Windows 95' };
 const applyTheme = (value) => {
   const selected = Object.hasOwn(themes, value) ? value : 'red-sox';
   document.documentElement.dataset.theme = selected;
