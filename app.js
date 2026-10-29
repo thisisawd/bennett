@@ -34,6 +34,7 @@ let renderKey = '';
 let pollTimer;
 let countdownTimer;
 let imageTimer;
+let videoCleanup;
 let mapObserver;
 let puzzleProgress;
 let puzzleSelection = null;
@@ -50,6 +51,7 @@ let musicTimer;
 let musicGain;
 let musicStep = 0;
 let musicNoise;
+let musicTrack = 'kahoot';
 let soundChosen = false;
 let roundEndsAt = 0;
 let pendingAnswer = null;
@@ -111,6 +113,34 @@ moreAvatars.append(moreLabel, avatarSelect);
 $('#avatar-options').append(moreAvatars);
 
 const noteFrequency = (note) => 440 * 2 ** ((note - 69) / 12);
+const musicTracks = {
+  kahoot: {
+    name: 'Kahoot Inspired', bpm: 118,
+    chords: [[60, 64, 67, 71], [57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 65], [60, 64, 67, 71], [62, 65, 69, 72], [53, 57, 60, 64], [55, 59, 62, 67]],
+    melody: [
+      [76, null, 79, 81, 79, 76, 74, null], [72, 76, null, 79, 76, 72, 71, null],
+      [77, null, 81, 79, 77, 76, 72, null], [74, 79, null, 77, 74, 71, 67, null],
+      [76, 79, 84, null, 83, 79, 76, 74], [77, null, 81, 84, 81, 77, 74, null],
+      [77, 81, null, 84, 81, 79, 77, 76], [74, 71, 67, null, 71, 74, 79, null],
+    ],
+  },
+  lofi: {
+    name: 'Low Fi Beats', bpm: 78,
+    chords: [[57, 60, 64, 71], [50, 57, 60, 64], [55, 59, 62, 66], [48, 55, 59, 64]],
+    melody: [
+      [76, null, 71, null, 74, 71, null, 69], [72, null, 69, null, 64, null, 67, null],
+      [71, null, 74, 78, null, 74, 71, null], [67, null, 64, null, 71, 67, null, 64],
+    ],
+  },
+  radio: {
+    name: 'New England Radio', bpm: 104,
+    chords: [[62, 66, 69], [55, 59, 62], [59, 62, 66], [57, 61, 64]],
+    melody: [
+      [74, 76, 78, null, 76, 74, 69, null], [71, null, 74, 76, 74, 71, 67, null],
+      [74, null, 78, 81, 78, 74, 71, null], [73, 76, null, 81, 76, 73, 69, null],
+    ],
+  },
+};
 
 function synthNote(note, start, duration, volume, type, output, slideTo) {
   const oscillator = audioContext.createOscillator();
@@ -127,7 +157,7 @@ function synthNote(note, start, duration, volume, type, output, slideTo) {
   oscillator.stop(start + duration + .02);
 }
 
-function synthPercussion(start, snare, output) {
+function synthPercussion(start, snare, output, strength = 1) {
   if (!musicNoise) {
     musicNoise = audioContext.createBuffer(1, Math.floor(audioContext.sampleRate * .15), audioContext.sampleRate);
     const samples = musicNoise.getChannelData(0);
@@ -140,7 +170,7 @@ function synthPercussion(start, snare, output) {
   filter.type = 'highpass';
   filter.frequency.value = snare ? 1200 : 6500;
   const duration = snare ? .13 : .04;
-  envelope.gain.setValueAtTime(snare ? .17 : .045, start);
+  envelope.gain.setValueAtTime((snare ? .17 : .045) * strength, start);
   envelope.gain.exponentialRampToValueAtTime(.0001, start + duration);
   source.connect(filter).connect(envelope).connect(output);
   source.onended = () => { source.disconnect(); filter.disconnect(); envelope.disconnect(); };
@@ -171,6 +201,7 @@ function playTone(kind) {
 function updateSoundButton() {
   $('#sound-toggle').textContent = `♫ Music ${soundEnabled ? 'on' : 'off'}`;
   $('#sound-toggle').setAttribute('aria-pressed', String(soundEnabled));
+  $('#sound-toggle').setAttribute('aria-label', `Music ${soundEnabled ? 'on' : 'off'}. Selected track: ${musicTracks[musicTrack].name}`);
 }
 function stopMusic() {
   clearInterval(musicTimer);
@@ -185,6 +216,8 @@ function stopMusic() {
 
 function startMusic() {
   if (!soundEnabled || musicTimer || document.hidden) return;
+  const video = experience.querySelector('video');
+  if (video && !video.paused && !video.ended) return;
   try {
     audioContext ??= new (window.AudioContext || window.webkitAudioContext)();
     musicGain = audioContext.createGain();
@@ -194,14 +227,9 @@ function startMusic() {
     audioContext.resume().catch(() => {
       if (musicGain === output) soundUnavailable('Music could not start. You can continue playing without it.');
     });
-    const chords = [[60, 64, 67, 71], [57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 65], [60, 64, 67, 71], [62, 65, 69, 72], [53, 57, 60, 64], [55, 59, 62, 67]];
-    const melody = [
-      [76, null, 79, 81, 79, 76, 74, null], [72, 76, null, 79, 76, 72, 71, null],
-      [77, null, 81, 79, 77, 76, 72, null], [74, 79, null, 77, 74, 71, 67, null],
-      [76, 79, 84, null, 83, 79, 76, 74], [77, null, 81, 84, 81, 77, 74, null],
-      [77, 81, null, 84, 81, 79, 77, 76], [74, 71, 67, null, 71, 74, 79, null],
-    ];
-    const stepDuration = 60 / 118 / 2;
+    const trackId = musicTrack;
+    const { chords, melody, bpm } = musicTracks[trackId];
+    const stepDuration = 60 / bpm / 2;
     let nextAt = audioContext.currentTime + .04;
     musicStep = 0;
     const schedule = () => {
@@ -212,14 +240,32 @@ function startMusic() {
           const bar = Math.floor(musicStep / 8) % chords.length;
           const step = musicStep % 8;
           const chord = chords[bar];
-          if (step === 0) chord.forEach((note) => synthNote(note, nextAt, 1.65, .065, 'sine', output));
-          if (step % 2 === 0) synthNote(chord[step === 4 ? 2 : 0] - 24, nextAt, .23, .32, 'triangle', output);
-          if (melody[bar][step] !== null) synthNote(melody[bar][step], nextAt, .18, .19, 'triangle', output);
-          if (step % 4 === 0) synthNote(47, nextAt, .16, .5, 'sine', output, 29);
-          synthPercussion(nextAt, false, output);
-          if (step % 4 === 2) synthPercussion(nextAt, true, output);
+          if (trackId === 'kahoot') {
+            if (step === 0) chord.forEach((note) => synthNote(note, nextAt, 1.65, .065, 'sine', output));
+            if (step % 2 === 0) synthNote(chord[step === 4 ? 2 : 0] - 24, nextAt, .23, .32, 'triangle', output);
+            if (melody[bar][step] !== null) synthNote(melody[bar][step], nextAt, .18, .19, 'triangle', output);
+            if (step % 4 === 0) synthNote(47, nextAt, .16, .5, 'sine', output, 29);
+            synthPercussion(nextAt, false, output);
+            if (step % 4 === 2) synthPercussion(nextAt, true, output);
+          } else if (trackId === 'lofi') {
+            if (step === 0) chord.forEach((note) => synthNote(note, nextAt, stepDuration * 7, .055, 'sine', output));
+            if (step % 2 === 0) synthNote(chord[0] - 12, nextAt, .35, .24, 'triangle', output);
+            if (melody[bar][step] !== null) synthNote(melody[bar][step], nextAt, .34, .12, 'sine', output);
+            if (step === 0 || step === 5) synthNote(43, nextAt, .18, .3, 'sine', output, 27);
+            if (step % 2) synthPercussion(nextAt, false, output, .35);
+            if (step % 4 === 2) synthPercussion(nextAt, true, output, .45);
+          } else {
+            if (step % 2 === 0) chord.forEach((note, index) => synthNote(note, nextAt + index * .009, .4, .09, 'triangle', output));
+            if (step === 0 || step === 4) {
+              synthNote(chord[0] - 12, nextAt, .35, .3, 'triangle', output);
+              synthNote(47, nextAt, .15, .28, 'sine', output, 29);
+            }
+            if (melody[bar][step] !== null) synthNote(melody[bar][step], nextAt, .26, .17, 'sine', output);
+            if (step % 2) synthPercussion(nextAt, false, output, .4);
+            if (step % 4 === 2) synthPercussion(nextAt, true, output, .6);
+          }
           musicStep++;
-          nextAt += stepDuration;
+          nextAt += stepDuration * (trackId === 'lofi' ? step % 2 ? .88 : 1.12 : 1);
         }
       } catch {
         soundUnavailable('Music stopped because audio is unavailable. The game still works; use Music to retry.');
@@ -247,6 +293,15 @@ $('#sound-toggle').addEventListener('click', () => {
   updateSoundButton();
   if (soundEnabled) startMusic();
   else stopMusic();
+});
+$('#music-track').addEventListener('change', (event) => {
+  const selected = event.currentTarget.value;
+  if (!Object.hasOwn(musicTracks, selected)) return;
+  musicTrack = selected;
+  stopMusic();
+  updateSoundButton();
+  if (soundEnabled) startMusic();
+  announce(`${musicTracks[musicTrack].name} selected.${soundEnabled ? '' : ' Turn Music on to listen.'}`);
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) stopMusic();
@@ -367,6 +422,8 @@ function resetHome() {
   clearTimeout(pollTimer);
   clearInterval(countdownTimer);
   clearTimeout(imageTimer);
+  videoCleanup?.();
+  videoCleanup = null;
   mapObserver?.disconnect();
   saveSession(null);
   currentState = null;
@@ -426,6 +483,8 @@ async function pollState() {
 function makePanel(eyebrow, title) {
   clearInterval(countdownTimer);
   clearTimeout(imageTimer);
+  videoCleanup?.();
+  videoCleanup = null;
   mapObserver?.disconnect();
   experience.replaceChildren();
   const panel = element('div', 'game-panel');
@@ -504,7 +563,7 @@ function renderHost(state) {
 function updateLobbyRules(state) {
   const rules = $('#lobby-rules');
   if (!rules) return;
-  const text = `${state.settings.questionCount} questions from a bank of ${state.bankSize} · ${state.settings.roundSeconds} seconds per answer, except the puzzle’s fixed 30 seconds. First, pin Alex’s hometown; round 2 is the nine-piece puzzle, and round 3 is the dog photo. Shorter games stop at your chosen count. Later questions are mixed with no repeats. The first completed puzzle wins that round. Map guesses reveal at time-up with animated lines and distances in miles. The host clicks Next for player points, then Next again for the following question. Personal facts come from the host; other trivia has linked sources. Rooms expire after 6 hours; restarting the server clears games.`;
+  const text = `${state.settings.questionCount} questions from a bank of ${state.bankSize} · ${state.settings.roundSeconds} seconds per regular answer. The puzzle gets 60 seconds, maps get 20 seconds, and videos get at least 30 seconds. First, pin Alex’s hometown; round 2 is the nine-piece puzzle, and round 3 introduces his dog. Shorter games stop at the chosen count. Alex’s photos, personal stories, and portfolio lead the mix, with just a little Rochester trivia. Questions do not repeat. The first completed puzzle wins that round. Map guesses reveal at time-up with animated lines and distances in miles. The host clicks Next for player points, then Next again for the following question. Personal facts come from the host; other trivia has linked sources. Rooms expire after 6 hours; restarting the server clears games.`;
   if (rules.textContent !== text) rules.textContent = text;
 }
 
@@ -515,8 +574,8 @@ function renderGameSettings(state, panel) {
   form.noValidate = true;
   const fields = element('div', 'settings-fields');
   [
-    { id: 'round-seconds', label: 'Seconds per answer', min: 5, max: 120, value: state.settings.roundSeconds, hint: '5–120 seconds. The puzzle always has its own 30-second limit.' },
-    { id: 'question-count', label: 'Number of questions', min: 1, max: state.bankSize, value: state.settings.questionCount, hint: `1–${state.bankSize} questions. No repeats within a game.` },
+    { id: 'round-seconds', label: 'Seconds per regular answer', min: 5, max: 120, value: state.settings.roundSeconds, hint: '5–120 seconds. Puzzle: 60 seconds. Maps: 20 seconds. Video: at least 30 seconds.' },
+    { id: 'question-count', label: 'Number of questions', min: 1, max: state.maxQuestions, value: state.settings.questionCount, hint: `1–${state.maxQuestions} questions, picked from the full bank. No repeats within a game.` },
   ].forEach(({ id, label: text, min, max, value, hint }) => {
     const field = element('div', 'field');
     const label = element('label', '', text);
@@ -582,10 +641,10 @@ function readGameSettings() {
   const roundSeconds = Number(seconds.value);
   const questionCount = Number(count.value);
   const secondsInvalid = !Number.isInteger(roundSeconds) || roundSeconds < 5 || roundSeconds > 120;
-  const countInvalid = !Number.isInteger(questionCount) || questionCount < 1 || questionCount > currentState.bankSize;
+  const countInvalid = !Number.isInteger(questionCount) || questionCount < 1 || questionCount > currentState.maxQuestions;
   seconds.setAttribute('aria-invalid', String(secondsInvalid));
   count.setAttribute('aria-invalid', String(countInvalid));
-  $('#settings-error').textContent = secondsInvalid ? 'Enter a whole number of seconds between 5 and 120.' : countInvalid ? `Enter a whole number of questions between 1 and ${currentState.bankSize}.` : '';
+  $('#settings-error').textContent = secondsInvalid ? 'Enter a whole number of seconds between 5 and 120.' : countInvalid ? `Enter a whole number of questions between 1 and ${currentState.maxQuestions}.` : '';
   if (secondsInvalid || countInvalid) {
     (secondsInvalid ? seconds : count).focus();
     return null;
@@ -650,7 +709,7 @@ function renderPlayerLobby(state) {
   rules.setAttribute('role', 'status');
   panel.append(rules);
   updateLobbyRules(state);
-  panel.append(element('p', 'muted centered', 'An original quiz-night groove plays after you join: melody, warm chords, bass and drums. It gets quieter during questions. Use Music in the header to mute it.'));
+  panel.append(element('p', 'muted centered', 'Choose Kahoot Inspired, Low Fi Beats, or New England Radio in the header. These are original synthesized tracks, not live radio or recordings of existing songs. Music gets quieter during questions; use Music to mute it.'));
   announce('You joined the game. Waiting for the host to start.');
 }
 
@@ -676,6 +735,7 @@ function renderQuestion(state) {
   progress.setAttribute('aria-label', 'Quiz completion');
   panel.insertBefore(progress, panel.querySelector('.eyebrow'));
   panel.append(element('p', 'question-category', question.category));
+  if (question.video) renderQuestionVideo(panel, question.video);
   if (question.image?.identification && question.type !== 'puzzle') renderQuestionImage(panel, question.image);
   if (question.type === 'puzzle') renderPuzzleRound(state, panel);
   else if (question.type === 'map') renderMapRound(state, panel);
@@ -709,7 +769,7 @@ function renderQuestion(state) {
   status.id = 'round-status';
   status.setAttribute('role', 'status');
   panel.append(status);
-  panel.append(element('p', 'muted', question.type === 'puzzle' ? '30 seconds maximum. The first completed puzzle ends the round immediately.' : `One choice. ${question.roundSeconds} seconds. No answers revealed until the clock hits zero.`));
+  panel.append(element('p', 'muted', question.type === 'puzzle' ? `${question.roundSeconds} seconds maximum. The first completed puzzle ends the round immediately.` : `One choice. ${question.roundSeconds} seconds. No answers revealed until the clock hits zero.`));
   let warned = false;
   let expired = false;
   const tick = () => {
@@ -751,7 +811,7 @@ function updateLiveRound(state) {
   });
   const answered = state.players.filter((player) => player.answered).length;
   const hasSelection = selected !== null || (isMap && Boolean(pendingAnswer?.location));
-  const message = expired ? 'Time’s up! Revealing the answers…' : isPuzzle ? state.role === 'host' ? 'Players are solving their own boards. First to finish wins; the limit is 30 seconds.' : `${puzzleProgress?.moves || 0} swaps saved. First to finish wins.` : state.role === 'host' ? `${answered} of ${state.players.length} answers locked in. Everyone has the full ${state.question.roundSeconds} seconds.` : pendingAnswer && !pendingAnswer.accepted ? 'Sending your answer… Your choice is saved here while we reconnect.' : hasSelection ? `${isMap ? 'Location' : `Answer ${'ABCD'[selected]}`} locked in. Waiting for the reveal…` : isMap ? 'Place a pin, then lock your location before the timer reaches zero.' : 'Pick your answer before the timer reaches zero.';
+  const message = expired ? 'Time’s up! Revealing the answers…' : isPuzzle ? state.role === 'host' ? `Players are solving their own boards. First to finish wins; the limit is ${state.question.roundSeconds} seconds.` : `${puzzleProgress?.moves || 0} swaps saved. First to finish wins.` : state.role === 'host' ? `${answered} of ${state.players.length} answers locked in. Everyone has the full ${state.question.roundSeconds} seconds.` : pendingAnswer && !pendingAnswer.accepted ? 'Sending your answer… Your choice is saved here while we reconnect.' : hasSelection ? `${isMap ? 'Location' : `Answer ${'ABCD'[selected]}`} locked in. Waiting for the reveal…` : isMap ? 'Place a pin, then lock your location before the timer reaches zero.' : 'Pick your answer before the timer reaches zero.';
   if ($('#round-status') && $('#round-status').textContent !== message) $('#round-status').textContent = message;
 }
 
@@ -838,7 +898,7 @@ function renderPuzzleRound(state, panel) {
     return;
   }
   if (state.role === 'host') {
-    panel.append(element('p', 'rules-box', 'Puzzle race! Everyone has the same shuffled photo in nine square pieces. Players drag pieces or select two to swap them. First to finish wins. This round always lasts at most 30 seconds.'));
+    panel.append(element('p', 'rules-box', `Puzzle race! Everyone has the same shuffled photo in nine square pieces. Players drag pieces or select two to swap them. First to finish wins. This round lasts at most ${state.question.roundSeconds} seconds.`));
     return;
   }
   puzzleProgress = { index: state.index, board: [...state.question.board], moves: state.question.moves };
@@ -846,7 +906,7 @@ function renderPuzzleRound(state, panel) {
   puzzleReady = false;
   const help = element('p', 'muted', 'Put the photo back together. Drag one piece onto another, or select two pieces to swap them. Keyboard: Tab between pieces and press Enter or Space to select. All nine pieces are square; the photo is cropped to a square. First to finish wins!');
   help.id = 'puzzle-help';
-  const notice = element('p', 'muted', 'Loading puzzle photo… Your 30-second timer is running.');
+  const notice = element('p', 'muted', `Loading puzzle photo… Your ${state.question.roundSeconds}-second timer is running.`);
   notice.id = 'puzzle-photo-status';
   notice.setAttribute('role', 'status');
   const board = element('div', 'puzzle-board');
@@ -878,7 +938,7 @@ function renderPuzzleRound(state, panel) {
     loaded.clear();
     puzzleReady = false;
     board.setAttribute('aria-busy', 'true');
-    notice.textContent = 'Loading puzzle photo… Your 30-second timer is running.';
+    notice.textContent = `Loading puzzle photo… Your ${state.question.roundSeconds}-second timer is running.`;
     const url = new URL(state.question.image.src, window.BENNETT_API_ORIGIN || location.origin).href;
     photoParts.forEach((image) => {
       image.removeAttribute('href');
@@ -1197,27 +1257,116 @@ function renderMapGuesses(state, svg, area, data, svgNode) {
   if (state.status === 'reveal') area.append(legend);
 }
 
+function renderQuestionVideo(panel, data) {
+  const figure = element('figure', 'question-media');
+  const video = element('video', 'question-video');
+  video.controls = true;
+  video.playsInline = true;
+  video.preload = 'metadata';
+  if (data.poster) video.poster = new URL(data.poster, window.BENNETT_API_ORIGIN || location.origin).href;
+  video.setAttribute('aria-label', data.caption);
+  const status = element('p', 'muted', 'Loading video…');
+  status.setAttribute('role', 'status');
+  const caption = element('figcaption', 'photo-caption', `${data.caption} Press Play to watch. The round timer keeps running.`);
+  if (data.source) {
+    const source = element('a', '', data.sourceLabel || 'Video source');
+    source.href = data.source;
+    caption.append(element('span', '', ' '), source);
+  }
+  const retry = action('Retry video', () => {
+    load();
+    video.focus();
+  });
+  retry.classList.add('hidden');
+  let timer;
+  let disposed = false;
+  const failed = () => {
+    if (disposed || !figure.isConnected) return;
+    clearTimeout(timer);
+    figure.setAttribute('aria-busy', 'false');
+    status.textContent = 'The video could not load or play. Retry it, or answer the question without the clip. Your answer is preserved and the timer keeps running.';
+    retry.classList.remove('hidden');
+  };
+  const load = () => {
+    clearTimeout(timer);
+    figure.setAttribute('aria-busy', 'true');
+    status.textContent = 'Loading video…';
+    retry.classList.add('hidden');
+    video.src = new URL(data.src, window.BENNETT_API_ORIGIN || location.origin).href;
+    timer = setTimeout(failed, 10000);
+    video.load();
+  };
+  const ready = () => {
+    if (disposed || !figure.isConnected) return;
+    clearTimeout(timer);
+    figure.setAttribute('aria-busy', 'false');
+    status.textContent = 'Video ready. Use Play to watch or replay the clip.';
+    retry.classList.add('hidden');
+  };
+  video.addEventListener('loadedmetadata', ready);
+  video.addEventListener('playing', ready);
+  video.addEventListener('waiting', () => {
+    if (disposed || !figure.isConnected) return;
+    clearTimeout(timer);
+    status.textContent = 'Buffering video… The round timer keeps running.';
+    timer = setTimeout(failed, 10000);
+  });
+  video.addEventListener('error', failed);
+  video.addEventListener('play', stopMusic);
+  video.addEventListener('pause', () => { if (!disposed) startMusic(); });
+  video.addEventListener('ended', () => { if (!disposed) startMusic(); });
+  figure.append(video, status, caption, retry);
+  if (data.description) {
+    const description = element('p', 'muted', `Video description: ${data.description}`);
+    description.id = 'video-description';
+    video.setAttribute('aria-describedby', description.id);
+    figure.append(description);
+  }
+  panel.append(figure);
+  videoCleanup = () => {
+    disposed = true;
+    clearTimeout(timer);
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    startMusic();
+  };
+  load();
+}
+
 function renderQuestionImage(panel, data) {
   const figure = element('figure', 'question-media');
-  const image = element('img', 'question-photo hidden');
+  const image = element('img', `question-photo${data.diagram ? ' question-diagram' : ''} hidden`);
   image.alt = data.alt;
   image.decoding = 'async';
+  let animating = false;
+  const animationControl = data.animationSrc ? action('Play animation', () => {
+    animating = !animating;
+    animationControl.textContent = animating ? 'Stop animation' : 'Play animation';
+    animationControl.setAttribute('aria-pressed', String(animating));
+    load();
+  }) : null;
+  animationControl?.setAttribute('aria-pressed', 'false');
   const status = element('p', 'muted', 'Loading photo…');
   status.setAttribute('role', 'status');
   const caption = element('figcaption', 'photo-caption');
-  caption.append(element('span', '', `${data.caption} Photo: ${data.author}. `));
+  caption.append(element('span', '', `${data.caption} ${data.creditLabel || 'Photo'}: ${data.author}. `));
   const original = element(data.source ? 'a' : 'span', '', data.sourceLabel || 'Wikimedia Commons source');
   if (data.source) original.href = data.source;
   caption.append(original, element('span', '', ' · '));
   const license = element(data.licenseUrl ? 'a' : 'span', '', data.license);
   if (data.licenseUrl) license.href = data.licenseUrl;
   caption.append(license, element('span', '', ' · Resized for display.'));
+  let retry;
   const unavailable = () => {
     if (!figure.isConnected) return;
     clearTimeout(imageTimer);
     image.classList.add('hidden');
     status.textContent = data.identification ? `Photo unavailable. Visual description: ${data.alt} You can answer from this description or retry the photo. The timer keeps running.` : 'Photo unavailable. The question and answers still work.';
-    if (!figure.querySelector('button')) figure.append(action('Retry photo', load));
+    if (!retry) {
+      retry = action('Retry photo', load);
+      figure.append(retry);
+    }
   };
   const load = () => {
     clearTimeout(imageTimer);
@@ -1225,7 +1374,7 @@ function renderQuestionImage(panel, data) {
     status.textContent = 'Loading photo…';
     figure.setAttribute('aria-busy', 'true');
     const origin = window.BENNETT_API_ORIGIN || location.origin;
-    image.src = new URL(data.src, origin).href;
+    image.src = new URL(animating ? data.animationSrc : data.src, origin).href;
     imageTimer = setTimeout(() => {
       figure.setAttribute('aria-busy', 'false');
       unavailable();
@@ -1236,7 +1385,7 @@ function renderQuestionImage(panel, data) {
     clearTimeout(imageTimer);
     figure.setAttribute('aria-busy', 'false');
     image.classList.remove('hidden');
-    status.textContent = '';
+    status.textContent = data.animationSrc ? animating ? 'Animation playing. Use Stop animation to return to the still image.' : 'Still image. Use Play animation to watch.' : '';
   });
   image.addEventListener('error', () => {
     if (!figure.isConnected) return;
@@ -1244,6 +1393,7 @@ function renderQuestionImage(panel, data) {
     unavailable();
   });
   figure.append(image, status, caption);
+  if (animationControl) figure.append(animationControl);
   panel.append(figure);
   load();
 }

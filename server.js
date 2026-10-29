@@ -1,13 +1,15 @@
 'use strict';
 
 const http = require('node:http');
+const { createReadStream } = require('node:fs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomBytes, randomInt } = require('node:crypto');
-const { questions, images } = require('./questions');
+const { questions, images, videos } = require('./questions');
 const maps = require('./maps');
 
 const PORT = Number(process.env.PORT) || 3000;
+const MAX_QUESTIONS = Math.min(30, questions.length);
 const ROOM_MS = 6 * 60 * 60 * 1000;
 const rooms = new Map();
 const limits = new Map();
@@ -26,10 +28,18 @@ function mixedQuestions(count) {
   const puzzle = questions.find((question) => question.type === 'puzzle');
   const dog = questions.find((question) => question.id === 'alex-dog');
   const selected = [questions[0], ...(count > 1 ? [puzzle] : []), ...(count > 2 ? [dog] : [])];
+  const handmade = shuffled(questions.filter((question) => question.hostQuestion && !selected.includes(question)));
+  while (selected.length < count && handmade.length) {
+    const different = handmade.filter((question) => question.topic !== selected.at(-1).topic);
+    const question = (different.length ? different : handmade)[0];
+    selected.push(question);
+    handmade.splice(handmade.indexOf(question), 1);
+  }
+  const portfolio = shuffled(questions.filter((question) => question.portfolioSite && !selected.includes(question)));
+  selected.push(...portfolio.slice(0, count - selected.length));
   const photos = shuffled(questions.filter((question) => question.photoQuestion && !selected.includes(question)));
-  const photoCount = Math.max(0, Math.min(count - selected.length, Math.ceil((count - 1) / 3) - selected.filter((question) => question.photoQuestion).length));
+  const photoCount = Math.max(0, Math.min(count - selected.length, Math.ceil((count - 1) * .55) - selected.filter((question) => question.photoQuestion).length));
   selected.push(...photos.slice(0, photoCount));
-  const localTopics = new Set(['rochester', 'rit', 'manchester', 'new-hampshire']);
   const takeBalanced = (candidates, target) => {
     const available = candidates.filter((question) => !selected.includes(question));
     while (selected.length < target && available.length) {
@@ -44,8 +54,15 @@ function mixedQuestions(count) {
       available.splice(available.indexOf(question), 1);
     }
   };
-  // Reserve photo rounds and a local majority before filling from the other themes.
-  takeBalanced(questions.filter((question) => localTopics.has(question.topic)), Math.min(count, selected.length + Math.ceil(count * .55) - 1));
+  // Favor the host's uploads and portfolio; use Rochester mainly as a fallback.
+  const isPortfolio = (question) => question.topic === 'design' || question.portfolioSite;
+  const portfolioCount = selected.filter(isPortfolio).length;
+  takeBalanced(questions.filter(isPortfolio), Math.min(count, selected.length + Math.max(0, Math.ceil(count * .35) - portfolioCount)));
+  takeBalanced(questions.filter((question) => question.topic === 'personal' || question.id === 'alex-rit'), count);
+  takeBalanced(shuffled(questions.filter((question) => question.topic === 'household')).slice(0, 1), Math.min(count, selected.length + 1));
+  takeBalanced(shuffled(questions.filter((question) => images[question.image]?.diagram)).slice(0, 1), Math.min(count, selected.length + 1));
+  takeBalanced(shuffled(questions.filter((question) => question.topic === 'rochester')).slice(0, 1), Math.min(count, selected.length + 1));
+  takeBalanced(questions.filter((question) => question.topic !== 'rochester'), count);
   takeBalanced(questions, count);
   const order = selected.slice(0, Math.min(count, 3));
   const remaining = selected.slice(order.length);
@@ -62,9 +79,12 @@ function mixedQuestions(count) {
     }));
     const spaced = viable.filter((question) => !recent.includes(question.topic));
     const pool = spaced.length ? spaced : viable.length ? viable : different.length ? different : remaining;
+    const handmadeCandidates = (viable.length ? viable : different.length ? different : remaining).filter((question) => question.hostQuestion);
+    const spacedHandmade = handmadeCandidates.filter((question) => !recent.includes(question.topic));
+    const handmadePool = spacedHandmade.length ? spacedHandmade : handmadeCandidates;
     const photosDue = order.slice(-4).every((question) => !question.photoQuestion);
     const photoPool = pool.filter((question) => question.photoQuestion);
-    const candidates = photosDue && photoPool.length ? photoPool : pool;
+    const candidates = handmadePool.length ? handmadePool : photosDue && photoPool.length ? photoPool : pool;
     const question = candidates[randomInt(candidates.length)];
     order.push(question);
     remaining.splice(remaining.indexOf(question), 1);
@@ -72,12 +92,12 @@ function mixedQuestions(count) {
   return order;
 }
 const fail = (status, message) => Object.assign(new Error(message), { status });
-const roundDurationSeconds = (room) => room.questions[room.index].type === 'puzzle' ? 30 : room.settings.roundSeconds;
+const roundDurationSeconds = (room) => room.questions[room.index].type === 'puzzle' ? 60 : room.questions[room.index].type === 'map' ? 20 : room.questions[room.index].video ? Math.max(30, room.settings.roundSeconds) : room.settings.roundSeconds;
 function gameSettings(body, current = { roundSeconds: 10, questionCount: 20 }) {
   const roundSeconds = body.roundSeconds === undefined ? current.roundSeconds : body.roundSeconds;
   const questionCount = body.questionCount === undefined ? current.questionCount : body.questionCount;
   if (!Number.isInteger(roundSeconds) || roundSeconds < 5 || roundSeconds > 120) throw fail(400, 'Choose a whole number of seconds between 5 and 120.');
-  if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > questions.length) throw fail(400, `Choose a whole number of questions between 1 and ${questions.length}.`);
+  if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > MAX_QUESTIONS) throw fail(400, `Choose a whole number of questions between 1 and ${MAX_QUESTIONS}.`);
   return { roundSeconds, questionCount };
 }
 const getRoom = (body) => {
@@ -111,7 +131,7 @@ function updateRound(room, now = Date.now()) {
     if (!room.puzzleWinner && now < room.deadline) return;
     if (room.puzzleWinner) {
       const winner = room.puzzleWinner;
-      winner.answers[room.index] = { selected: true, completed: true, elapsed: Math.max(0, 30000 - (room.deadline - now)), points: 1000 };
+      winner.answers[room.index] = { selected: true, completed: true, elapsed: Math.max(0, roundDurationSeconds(room) * 1000 - (room.deadline - now)), points: 1000 };
       winner.score += 1000;
       winner.correct++;
     }
@@ -139,7 +159,7 @@ function updateRound(room, now = Date.now()) {
   room.players.forEach((player) => {
     const answer = player.answers[room.index];
     if (answer?.selected === correctAnswer) {
-      answer.points = 600 + Math.round(400 * Math.max(0, 1 - answer.elapsed / (room.settings.roundSeconds * 1000)));
+      answer.points = 600 + Math.round(400 * Math.max(0, 1 - answer.elapsed / (roundDurationSeconds(room) * 1000)));
       player.score += answer.points;
       player.correct++;
     }
@@ -151,13 +171,13 @@ function publicState(room, body) {
   updateRound(room);
   const host = body.token === room.hostToken;
   const player = host ? null : getPlayer(room, body);
-  const state = { code: room.code, role: host ? 'host' : 'player', status: room.status, total: room.settings.questionCount, bankSize: questions.length, settings: room.settings, index: room.index };
+  const state = { code: room.code, role: host ? 'host' : 'player', status: room.status, total: room.settings.questionCount, bankSize: questions.length, maxQuestions: MAX_QUESTIONS, settings: room.settings, index: room.index };
   state.players = room.players.map((entry) => ({ name: entry.name, avatar: entry.avatar, answered: Boolean(entry.answers[room.index]) }));
   if (player) {
     state.player = { name: player.name, avatar: player.avatar, score: player.score, correct: player.correct, selected: player.answers[room.index]?.selected ?? null };
   }
   if (['playing', 'reveal', 'results'].includes(room.status)) {
-    const { type = 'choice', mapId = 'new-hampshire', prompt, answers, category, explanation, source, image, revealImage, target } = room.questions[room.index];
+    const { type = 'choice', mapId = 'new-hampshire', prompt, answers, category, explanation, source, image, video, revealImage, target } = room.questions[room.index];
     state.question = { type, prompt, category, roundSeconds: roundDurationSeconds(room), remainingMs: room.status === 'playing' ? Math.max(0, room.deadline - Date.now()) : 0 };
     if (type === 'map') state.question.mapId = mapId;
     if (type === 'choice') state.question.answers = room.options[room.index].map((index) => answers[index]);
@@ -166,6 +186,7 @@ function publicState(room, body) {
       if (player) state.question.moves = player.puzzleMoves;
     }
     if (!revealImage) state.question.image = images[image];
+    if (video) state.question.video = videos[video];
     if (room.status === 'reveal' || room.status === 'results') {
       const correctAnswer = type === 'choice' ? room.options[room.index].indexOf(room.questions[room.index].correct) : null;
       state.reveal = {
@@ -283,7 +304,7 @@ function api(command, body) {
     if (player.answers[room.index]) return { accepted: true, selected: player.answers[room.index].selected };
     if (room.status !== 'playing') throw fail(409, 'Answers are closed. Wait for the host to start the next question.');
     const selected = isMap ? { lat: body.location.lat, lng: body.location.lng } : body.answer;
-    player.answers[room.index] = { selected, elapsed: room.settings.roundSeconds * 1000 - (room.deadline - now), points: 0 };
+    player.answers[room.index] = { selected, elapsed: roundDurationSeconds(room) * 1000 - (room.deadline - now), points: 0 };
     return { accepted: true, selected };
   }
   if (command === 'results') {
@@ -323,8 +344,15 @@ const staticFiles = new Map([
   ['/maps.js', ['maps.js', 'text/javascript; charset=utf-8']],
 ]);
 for (const image of Object.values(images)) {
-  if (!image.src.startsWith('/images/')) continue;
-  staticFiles.set(image.src, [path.join('images', path.basename(image.src)), image.src.endsWith('.png') ? 'image/png' : 'image/jpeg']);
+  for (const src of [image.src, image.animationSrc].filter(Boolean)) {
+    if (!src.startsWith('/images/')) continue;
+    const type = src.endsWith('.png') ? 'image/png' : src.endsWith('.gif') ? 'image/gif' : 'image/jpeg';
+    staticFiles.set(src, [path.join('images', path.basename(src)), type]);
+  }
+}
+for (const video of Object.values(videos)) {
+  if (!video.src.startsWith('/videos/')) continue;
+  staticFiles.set(video.src, [path.join('videos', path.basename(video.src)), 'video/mp4']);
 }
 const server = http.createServer(async (request, response) => {
   response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -373,6 +401,38 @@ const server = http.createServer(async (request, response) => {
     if (!['GET', 'HEAD'].includes(request.method)) throw fail(405, 'This page supports GET requests.');
     const file = staticFiles.get(url.pathname);
     if (!file) throw fail(404, 'That page was not found.');
+    if (file[1] === 'video/mp4') {
+      const filename = path.join(__dirname, file[0]);
+      const { size } = await fs.stat(filename);
+      let start = 0;
+      let end = size - 1;
+      const range = request.headers.range;
+      if (range) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+        if (match && (match[1] || match[2])) {
+          start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2]));
+          end = match[1] && match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+        }
+        if (!match || (!match[1] && !match[2]) || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start >= size || end < start || (!match[1] && Number(match[2]) === 0)) {
+          response.writeHead(416, { 'Content-Range': `bytes */${size}`, 'Accept-Ranges': 'bytes' });
+          response.end();
+          return;
+        }
+      }
+      response.writeHead(range ? 206 : 200, {
+        'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes',
+        'Content-Length': end - start + 1, 'Cache-Control': 'public, max-age=86400',
+        ...(range ? { 'Content-Range': `bytes ${start}-${end}/${size}` } : {}),
+      });
+      if (request.method === 'HEAD') response.end();
+      else {
+        const stream = createReadStream(filename, { start, end });
+        stream.on('error', () => response.destroy());
+        response.on('close', () => stream.destroy());
+        stream.pipe(response);
+      }
+      return;
+    }
     const content = await fs.readFile(path.join(__dirname, file[0]));
     response.writeHead(200, { 'Content-Type': file[1], 'Cache-Control': file[1].startsWith('image/') ? 'public, max-age=86400' : 'no-cache' });
     response.end(request.method === 'HEAD' ? undefined : content);

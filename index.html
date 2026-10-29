@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#bd3039">
-  <meta name="description" content="60 live Bennett questions: Rochester, RIT internship lore, Manchester, New Hampshire, photo mysteries, and a nine-piece puzzle. Play together on your own devices.">
+  <meta name="description" content="44 questions about Alexander Bennett, from Microsoft design projects to Manchester roots and one very good dog. Play up to 30 together on your own devices.">
   <title>The Bennett Quiz — How well do you know Alexander?</title>
-  <link rel="stylesheet" href="style.css?v=red-sox-questions">
+  <link rel="stylesheet" href="style.css?v=portfolio-media">
   <script src="config.js?v=bank-60" defer></script>
   <script src="nh-map.js?v=bank-60" defer></script>
   <script src="europe-map.js?v=map-reveals" defer></script>
   <script src="maps.js?v=map-reveals" defer></script>
-  <script src="app.js?v=map-reveals" defer></script>
+  <script src="app.js?v=portfolio-media" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -21,7 +21,17 @@
       <span>the bennett quiz<span class="brand-sub">A THISISAWD ORIGINAL</span></span>
     </a>
     <nav class="header-actions" aria-label="Main navigation">
-      <button class="sound-button" id="sound-toggle" type="button" aria-pressed="false"><span aria-hidden="true">♫</span> Music off</button>
+      <div class="music-controls">
+        <div class="music-picker">
+          <label for="music-track">Music track</label>
+          <select id="music-track">
+            <option value="kahoot">Kahoot Inspired</option>
+            <option value="lofi">Low Fi Beats</option>
+            <option value="radio">New England Radio</option>
+          </select>
+        </div>
+        <button class="button button-outline button-small sound-button" id="sound-toggle" type="button" aria-pressed="false" aria-label="Music off. Selected track: Kahoot Inspired">♫ Music off</button>
+      </div>
       <button class="button button-outline button-small" id="host-button" type="button">Host a game <span aria-hidden="true">↗</span></button>
     </nav>
   </header>
@@ -31,10 +41,10 @@
       <div class="hero-copy">
         <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> GOOD TEAMMATE. GREAT QUIZ MATERIAL.</p>
         <h1 id="hero-title">You know Alex.<br>But do you<br><span class="headline-highlight">know Bennett?</span></h1>
-        <p class="hero-description">The designer. The Manchester roots. The RIT years.<br>Rochester, New Hampshire, and photo rounds:<br class="desktop-break"> name the design, spot the bike, or pin the place.</p>
+        <p class="hero-description">The designer. The Manchester roots. The RIT years.<br>Big ideas. Good stories. One very good dog.<br class="desktop-break"> Name the design, spot the bike, or pin the place.</p>
         <div class="quiz-facts" aria-label="Quiz details">
-          <span><span aria-hidden="true">▤</span> 60-question bank</span>
-          <span><span aria-hidden="true">◷</span> Your timer. Your game length.</span>
+          <span><span aria-hidden="true">▤</span> 44-question bank</span>
+          <span><span aria-hidden="true">◷</span> Up to 30 questions per game</span>
           <span><svg class="question-mark" viewBox="0 0 32 36" aria-hidden="true" focusable="false"><path d="M7 10c0-11 19-11 19 0 0 7-10 7-10 14m0 7v1"/></svg> All the bragging rights</span>
         </div>
 
@@ -123,7 +133,7 @@
     <div class="dialog-top"><span class="eyebrow">YOU'RE RUNNING THE SHOW</span><button class="icon-button" id="close-host" type="button" aria-label="Close host setup">×</button></div>
     <h2 id="host-title">Bring the team together.</h2>
     <p>Create a room and share the invite link. Put your host screen on the big screen or share it on a call. Everyone answers separately on their own device.</p>
-    <p class="host-note">Choose 1–60 questions and 5–120 seconds per answer in your lobby. Every game starts with the New Hampshire hometown map. Round 2 is a shuffled nine-square photo puzzle with its own 30-second limit; the first finisher wins that round. Round 3 introduces Alex’s dog. Shorter games stop at your chosen count. The 60-question bank has 33 Rochester, RIT, Manchester, and New Hampshire rounds, with just three music-and-brand household questions. The default 20-question game includes all seven photo rounds: the puzzle, the dog, the bike, the watch, two more designs, and a Europe location mystery. Map guesses appear at time-up with animated lines, names, avatars, and distances in miles. Themes are mixed apart. Photos include source credits. Next shows player points on their own screen; Next again starts the following round. Mute music in the header.</p>
+    <p class="host-note">Pick 1–30 questions. Start with Alex’s hometown, race through a nine-piece photo puzzle, then meet his dog. The puzzle gets 60 seconds; both maps get 20. Alex’s personal stories and photos lead the mix, with six projects from his current portfolio in the default 20-question game and just a little Rochester trivia. Each photo or video gets one question, and Presenter+ gets one product round. Patent questions include real diagrams and plain-English context. Videos have Play controls and at least 30 seconds to watch and answer; GIFs have Play and Stop controls. Map guesses reveal with animated lines, names, and distances in miles. The host shows the answer, then the points, then starts the next round. Choose an original soundtrack in the header, or turn Music off.</p>
     <p class="form-error" id="host-error" role="alert"></p>
     <button class="button button-primary" id="create-room" type="button">Create a game <span aria-hidden="true">→</span></button>
   </dialog>
