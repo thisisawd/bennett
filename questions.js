@@ -16,6 +16,7 @@ const sources = {
   strong: { label: 'The Strong: museum history', url: 'https://www.museumofplay.org/about/' },
   rit: { label: 'RIT history and campus', url: 'https://en.wikipedia.org/wiki/Rochester_Institute_of_Technology' },
   ritDesign: { label: 'RIT: Industrial Design BFA', url: 'https://www.rit.edu/study/industrial-design-bfa' },
+  trumbull: { label: 'Little League: 1989 championship; Alex’s internship supplied by the quiz host', url: 'https://www.littleleague.org/videos/1989-little-league-baseball-championship-highlights/' },
   manchester: { label: 'Manchester, New Hampshire: history and landmarks', url: 'https://en.wikipedia.org/wiki/Manchester,_New_Hampshire' },
   millyard: { label: 'Manchester Historic Association: Millyard Museum', url: 'https://manchesterhistoric.org/millyard-museum/' },
   wright: { label: 'Currier Museum: Frank Lloyd Wright houses', url: 'https://www.currier.org/frank-lloyd-wright' },
@@ -31,6 +32,13 @@ const sources = {
 };
 
 const images = {
+  trumbull: {
+    src: '/images/trumbull-1.jpg',
+    alt: 'A maple tree with bright orange autumn foliage among green trees and grass in Abraham Nichols Park.',
+    caption: 'Abraham Nichols Park, Trumbull, Connecticut.', author: 'Tomticker5',
+    source: 'https://commons.wikimedia.org/wiki/File:Abraham_Nichols_Park_maple_tree.JPG',
+    license: 'CC BY-SA 3.0', licenseUrl: 'https://creativecommons.org/licenses/by-sa/3.0/',
+  },
   puzzle: {
     src: '/images/puzzle-1.png',
     alt: 'A smiling person with glasses and a striped shirt beside a basketball court, with players, seating, banners, and a hoop in the background.',
@@ -149,7 +157,7 @@ const questions = [
   { id: 'nh-capital', topic: 'new-hampshire', category: 'Granite State geography', prompt: 'Quick capital check: which city runs New Hampshire’s state government?', answers: ['Manchester', 'Portsmouth', 'Concord', 'Nashua'], correct: 2, explanation: 'Concord is the capital. Alex’s hometown, Manchester, is the state’s largest city, but it doesn’t get this particular title.', source: sources.nh, image: 'mountains' },
   { id: 'nh-highest', topic: 'new-hampshire', category: 'Peak New Hampshire', prompt: 'If we’re picking New Hampshire’s tallest peak, which mountain wins?', answers: ['Mount Monadnock', 'Mount Moosilauke', 'Mount Lafayette', 'Mount Washington'], correct: 3, explanation: 'Mount Washington, at about 6,288 feet. Alex’s New Hampshire roots put it on our map; knowing the peak doesn’t require claiming he has climbed it.', source: sources.washington, image: 'mountains', revealImage: true },
   { id: 'nh-range', topic: 'new-hampshire', category: 'New Hampshire outdoors', prompt: 'A little mountain geography: which region includes Mount Washington?', answers: ['The White Mountains', 'The Green Mountains', 'The Adirondacks', 'The Catskills'], correct: 0, explanation: 'The White Mountains, including the Presidential Range. This is a scenic detour through Alex’s home state of New Hampshire, not a reconstruction of his hiking itinerary.', source: sources.washington, image: 'mountains' },
-  { id: 'nh-coast', topic: 'new-hampshire', category: 'Small coast, big energy', prompt: 'New Hampshire has a short coastline. Which ocean gets that little stretch?', answers: ['The Pacific', 'The Atlantic', 'The Arctic', 'The Indian Ocean'], correct: 1, explanation: 'The Atlantic, via the Gulf of Maine. Alex’s home state manages to fit mountains and a seacoast into the same geography round.', source: sources.nh, image: 'mountains' },
+  { id: 'rit-henkel-trumbull', topic: 'rit', category: 'RIT · Internship detour', prompt: 'While at RIT, Alex interned at Henkel’s office in Trumbull, Connecticut. What is Trumbull famous for?', answers: ['Putting a Dunkin’ on both sides of the same rotary', 'Declaring 45°F official shorts weather', 'Winning the 1989 Little League World Series', 'Setting a world record for complaining about I-95'], correct: 2, explanation: 'Trumbull won the 1989 Little League World Series, beating Chinese Taipei 5–2 in the final. Alex’s link to the town is his Henkel internship while at RIT, as supplied by the quiz host. This was Little League, not the MLB World Series.', source: sources.trumbull, image: 'trumbull' },
   { id: 'nh-old-man', topic: 'new-hampshire', category: 'Granite State landmark', prompt: 'The Old Man of the Mountain sounds like a character. What was it really?', answers: ['A lighthouse keeping watch', 'An old covered bridge', 'A rock face that looked like a person', 'A Revolutionary War ship'], correct: 2, explanation: 'A cliff-side rock formation resembling a human face. It collapsed in 2003 but remains a New Hampshire symbol. Alex’s Manchester roots are why this home-state landmark gets a question.', source: sources.oldMan, image: 'mountains' },
   { id: 'nh-lake', topic: 'new-hampshire', category: 'New Hampshire lake life', prompt: 'Which lake takes the title for largest entirely inside New Hampshire?', answers: ['Lake Champlain', 'Squam Lake', 'Newfound Lake', 'Lake Winnipesaukee'], correct: 3, explanation: 'Lake Winnipesaukee. It’s the biggest lake entirely within Alex’s home state. Lake Champlain may be a tempting New England answer, but it’s outside New Hampshire.', source: sources.lake, image: 'mountains' },
   { id: 'nh-neighbor', topic: 'new-hampshire', category: 'New England neighbors', prompt: 'Head west out of New Hampshire. Which state is next door?', answers: ['Maine', 'Vermont', 'Rhode Island', 'Connecticut'], correct: 1, explanation: 'Vermont is to the west; Maine is to the east. Alex’s Manchester beginnings are giving everyone a quick New England geography refresher.', source: sources.nh, image: 'mountains' },
