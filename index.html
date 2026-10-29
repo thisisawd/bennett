@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#bd3039">
   <meta name="description" content="44 questions about Alexander Bennett, from Microsoft design projects to Manchester roots and one very good dog. Play up to 30 together on your own devices.">
   <title>The Bennett Quiz — How well do you know Alexander?</title>
-  <link rel="stylesheet" href="style.css?v=question-speech">
+  <link rel="stylesheet" href="style.css?v=mobile-speech">
   <script src="config.js?v=bank-60" defer></script>
   <script src="nh-map.js?v=bank-60" defer></script>
   <script src="europe-map.js?v=map-reveals" defer></script>
   <script src="maps.js?v=map-reveals" defer></script>
-  <script src="app.js?v=question-speech" defer></script>
+  <script src="app.js?v=mobile-speech" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -21,28 +21,31 @@
       <span>the bennett quiz<span class="brand-sub">A THISISAWD ORIGINAL</span></span>
     </a>
     <nav class="header-actions" aria-label="Main navigation">
-      <div class="header-picker theme-picker">
-        <label for="theme-select">Theme</label>
-        <select id="theme-select">
-          <option value="red-sox">Red Sox Red</option>
-          <option value="ll-bean">LL Bean Green</option>
-          <option value="rit">RIT Orange</option>
-        </select>
-      </div>
-      <div class="music-controls">
-        <div class="header-picker music-picker">
-          <label for="music-track">Music track</label>
-          <select id="music-track" aria-describedby="music-hint">
-            <option value="kahoot">Kahoot Inspired</option>
-            <option value="lofi">Low Fi Beats</option>
-            <option value="radio">New England Radio</option>
-            <option value="noah">Noah Kahan Radio</option>
-            <option value="taylor">Taylor Swift Radio</option>
-          </select>
-          <span class="sr-only" id="music-hint">Original synthesized instrumentals, not artist recordings or live radio.</span>
+      <details class="appearance-settings" id="appearance-settings" open>
+        <summary class="appearance-summary">Theme &amp; music</summary>
+        <div class="appearance-pickers">
+          <div class="header-picker theme-picker">
+            <label for="theme-select">Theme</label>
+            <select id="theme-select">
+              <option value="red-sox">Red Sox Red</option>
+              <option value="ll-bean">LL Bean Green</option>
+              <option value="rit">RIT Orange</option>
+            </select>
+          </div>
+          <div class="header-picker music-picker">
+            <label for="music-track">Music track</label>
+            <select id="music-track" aria-describedby="music-hint">
+              <option value="kahoot">Kahoot Inspired</option>
+              <option value="lofi">Low Fi Beats</option>
+              <option value="radio">New England Radio</option>
+              <option value="noah">Noah Kahan Radio</option>
+              <option value="taylor">Taylor Swift Radio</option>
+            </select>
+            <span class="sr-only" id="music-hint">Original synthesized instrumentals, not artist recordings or live radio.</span>
+          </div>
         </div>
-        <button class="button button-outline button-small sound-button" id="sound-toggle" type="button" aria-pressed="false" aria-label="Music off. Selected track: Kahoot Inspired">♫ Music off</button>
-      </div>
+      </details>
+      <button class="button button-outline button-small sound-button" id="sound-toggle" type="button" aria-pressed="false" aria-label="Music off. Selected track: Kahoot Inspired">♫ Music off</button>
       <button class="button button-primary button-small" id="host-button" type="button">Host</button>
     </nav>
   </header>

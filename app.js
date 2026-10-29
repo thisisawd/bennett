@@ -36,6 +36,7 @@ let countdownTimer;
 let imageTimer;
 let videoCleanup;
 let questionSpeech;
+let browserSpeechConsent = false;
 let mapObserver;
 let puzzleProgress;
 let puzzleSelection = null;
@@ -83,6 +84,17 @@ $('#theme-select').addEventListener('change', (event) => {
   }
   announce(`${themes[selected]} selected.`);
 });
+const appearanceMedia = window.matchMedia('(max-width: 600px)');
+const updateAppearanceDisclosure = () => {
+  const settings = $('#appearance-settings');
+  const summary = settings.querySelector('summary');
+  const focused = document.activeElement;
+  settings.open = !appearanceMedia.matches;
+  if (appearanceMedia.matches && focused !== summary && settings.contains(focused)) summary.focus();
+  else if (!appearanceMedia.matches && focused === summary) $('#theme-select').focus();
+};
+updateAppearanceDisclosure();
+appearanceMedia.addEventListener('change', updateAppearanceDisclosure);
 const element = (tag, className, text) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -227,7 +239,7 @@ function soundUnavailable(message) {
 }
 
 function playTone(kind) {
-  if (!soundEnabled || document.hidden) return;
+  if (!soundEnabled || document.hidden || questionSpeech?.active) return;
   try {
     audioContext ??= new (window.AudioContext || window.webkitAudioContext)();
     audioContext.resume().catch(() => soundUnavailable('Sound could not start. You can still play without it.'));
@@ -952,7 +964,7 @@ function renderQuestionSpeech(state, panel) {
   const preview = element('p', 'speech-preview hidden');
   const isPlayer = state.role === 'player' && state.status === 'playing';
   const hint = state.question.type === 'puzzle' ? 'Say swap 1 and 2, using positions 1–9.' : state.question.type === 'map' ? 'Say a place from the location dropdown.' : 'Say A, B, C, or D, or the full answer.';
-  help.textContent = isPlayer ? `${hint} Review before confirming. Recognition stays on-device. The clock keeps running.` : 'Hear the question and its choices using your browser’s voice.';
+  help.textContent = isPlayer ? `${hint} Review before confirming. The clock keeps running.` : 'Hear the question and its choices using your browser’s voice.';
   let disposed = false;
   let mode = '';
   let operation = '';
@@ -961,39 +973,51 @@ function renderQuestionSpeech(state, panel) {
   let utterance;
   let candidate = null;
   let recognition;
+  let localCapable = false;
+  let localAttempt = false;
   const waits = new Set();
   const synthesis = window.speechSynthesis;
   const canRead = Boolean(synthesis && window.SpeechSynthesisUtterance);
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (isPlayer && window.isSecureContext && Recognition && typeof Recognition.available === 'function') {
+  if (isPlayer && window.isSecureContext && Recognition) {
     try {
       recognition = new Recognition();
-      if (!('processLocally' in recognition)) recognition = null;
-      else {
-        recognition.processLocally = true;
-        recognition.lang = 'en-US';
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.maxAlternatives = 1;
-        if (recognition.processLocally !== true) recognition = null;
-      }
+      localCapable = 'processLocally' in recognition && typeof Recognition.available === 'function';
+      recognition.lang = 'en-US';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
     } catch { recognition = null; }
   }
+  const consent = element('div', 'speech-consent');
+  const consentInput = element('input');
+  consentInput.type = 'checkbox';
+  consentInput.id = 'browser-speech-consent';
+  consentInput.checked = browserSpeechConsent;
+  const consentLabel = element('label', '', 'Allow browser speech for this visit if local recognition is unavailable. Audio may be sent to your browser provider.');
+  consentLabel.htmlFor = consentInput.id;
+  consentInput.addEventListener('change', () => {
+    browserSpeechConsent = consentInput.checked;
+    if (!browserSpeechConsent && mode && mode !== 'reading' && !localAttempt) stop();
+    say(browserSpeechConsent ? 'Browser speech allowed for this visit. Local mode is still preferred. Choose Speak answer to begin.' : 'Browser speech is off. Only on-device recognition will be used.');
+    update();
+  });
+  consent.append(consentInput, consentLabel);
   const say = (text, error = false) => {
     status.className = `${error ? 'form-error' : 'muted'} speech-status`;
     status.textContent = text;
   };
-  const setupFailure = (error) => ['NotAllowedError', 'SecurityError'].includes(error?.name) ? 'This page or browser blocks on-device speech. Check site permissions, then retry, or use the on-screen controls.' : error?.message || 'Speech setup failed. Try again, or use the on-screen controls.';
+  const setupFailure = (error) => ['NotAllowedError', 'SecurityError'].includes(error?.name) ? 'This page or browser blocks speech. Check microphone and speech permissions, then retry, or use the on-screen controls.' : error?.message || 'Speech setup failed. Try again, or use the on-screen controls.';
   const current = () => !disposed && session === speechSession && currentState?.index === state.index && currentState?.status === state.status && area.isConnected;
   const canAnswer = () => current() && isPlayer && currentState.status === 'playing' && performance.now() < roundEndsAt && currentState.player?.selected === null && !pendingAnswer && (state.question.type !== 'puzzle' || (puzzleReady && !puzzleBusy && !pendingPuzzleMove)) && (state.question.type !== 'map' || Boolean($('#map-town')));
   const update = () => {
     read.disabled = !canRead;
-    speak.disabled = !recognition || !canAnswer() || Boolean(operation);
+    speak.disabled = !recognition || (!localCapable && !browserSpeechConsent) || !canAnswer() || Boolean(operation);
     install.disabled = !canAnswer() || Boolean(operation);
     confirm.disabled = !candidate || !canAnswer() || Boolean(operation);
     if ((mode || operation) && (!current() || document.hidden || (state.status === 'playing' && performance.now() >= roundEndsAt) || (mode !== 'reading' && !canAnswer()))) stop();
   };
-  const stop = () => {
+  const stop = (resumeMusic = true) => {
     const previous = mode || operation;
     generation++;
     operation = '';
@@ -1016,7 +1040,7 @@ function renderQuestionSpeech(state, panel) {
       if (previous) say('Speech stopped. Your on-screen controls still work.');
       update();
     }
-    startMusic();
+    if (resumeMusic) startMusic();
   };
   const waitFor = (promise, milliseconds) => new Promise((resolve, reject) => {
     const cancel = () => { clearTimeout(timer); waits.delete(cancel); reject(new Error('Speech setup cancelled.')); };
@@ -1028,17 +1052,17 @@ function renderQuestionSpeech(state, panel) {
     mode = nextMode;
     stopMusic();
     experience.querySelector('video')?.pause();
+    if (audioContext?.state === 'running') audioContext.suspend().catch(() => {});
   };
   const read = action('Read question', () => {
     if (mode === 'reading') return stop();
-    stop();
+    stop(false);
     if (!canRead || !current()) return;
     try {
       const choices = state.question.answers?.map((answer, index) => `${'ABCD'[index]}. ${answer}.`).join(' ') || '';
       utterance = new window.SpeechSynthesisUtterance(`${state.question.prompt} ${choices}`);
       utterance.lang = 'en-US';
-      const voices = synthesis.getVoices();
-      utterance.voice = voices.find((voice) => voice.localService && voice.lang.toLowerCase().startsWith('en')) || voices.find((voice) => voice.lang.toLowerCase().startsWith('en')) || null;
+      utterance.volume = 1;
       const token = generation;
       const failed = (message) => { if (!current() || token !== generation) return; stop(); say(message, true); };
       utterance.onstart = () => {
@@ -1053,34 +1077,43 @@ function renderQuestionSpeech(state, panel) {
       read.textContent = 'Stop reading';
       say('Starting your browser’s voice…');
       audioTimer = setTimeout(() => failed('Speech playback did not start. Check your browser’s voice settings and try again.'), 8000);
+      synthesis.resume();
       synthesis.speak(utterance);
     } catch { stop(); say('Speech playback is unavailable. You can still read the question on screen.', true); }
   });
   const speak = action('Speak answer', async () => {
     if (mode === 'listening' || mode === 'starting') return stop();
-    stop();
-    if (!recognition || !canAnswer()) return;
+    stop(false);
+    if (!recognition || (!localCapable && !browserSpeechConsent) || !canAnswer()) return;
     candidate = null;
     confirm.classList.add('hidden');
     const token = generation;
-    operation = 'checking';
-    say('Checking on-device speech recognition…');
-    update();
     try {
-      const availability = await waitFor(Recognition.available({ langs: ['en-US'], processLocally: true }), 8000);
+      let availability = 'unavailable';
+      if (localCapable) {
+        operation = 'checking';
+        say('Checking on-device speech recognition…');
+        update();
+        try {
+          availability = await waitFor(Recognition.available({ langs: ['en-US'], processLocally: true }), 8000);
+        } catch (error) {
+          if (!browserSpeechConsent) throw error;
+        }
+      }
       if (!current() || token !== generation || !canAnswer()) return;
       operation = '';
       install.classList.toggle('hidden', availability !== 'downloadable' || typeof Recognition.install !== 'function');
-      if (availability !== 'available') {
+      localAttempt = availability === 'available';
+      if (!localAttempt && !browserSpeechConsent) {
         say(availability === 'downloadable' ? 'Download the English speech pack once to recognize answers on this device. The timer keeps running.' : availability === 'downloading' ? 'The speech pack is still downloading. Use the on-screen controls, then try Speak answer again.' : 'On-device English recognition is unavailable in this browser. Use the on-screen controls.', true);
         return;
       }
-      recognition.processLocally = true;
-      if (recognition.processLocally !== true) throw new Error('This browser cannot guarantee on-device recognition. Use the on-screen controls.');
+      if ('processLocally' in recognition) recognition.processLocally = localAttempt;
+      if (localAttempt && recognition.processLocally !== true) throw new Error('This browser cannot guarantee on-device recognition. Use the on-screen controls.');
       recognition.onstart = () => {
         if (!current() || token !== generation) return;
         mode = 'listening';
-        say('Listening on this device… Speak now, or choose Stop listening.');
+        say(localAttempt ? 'Listening on this device… Speak now, or choose Stop listening.' : 'Listening through your browser’s speech service… Speak now, or choose Stop listening.');
       };
       recognition.onresult = (event) => {
         if (!current() || token !== generation || !canAnswer()) return;
@@ -1099,13 +1132,14 @@ function renderQuestionSpeech(state, panel) {
         if (!current() || token !== generation) return;
         const messages = {
           'not-allowed': 'Microphone access was denied. Allow it in your browser’s site settings, then try Speak answer again.',
-          'service-not-allowed': 'Your browser or page permissions block local recognition. Check site settings, or use the on-screen controls.',
+          'service-not-allowed': 'Speech recognition is blocked. Allow speech and microphone access in browser or device settings, then retry.',
           'audio-capture': 'No usable microphone was found. Connect or enable one, then try again.',
           'no-speech': 'No speech was heard. Try again, or use the on-screen controls.',
-          'language-not-supported': 'The English speech pack is missing. Choose Speak answer to check setup again.',
+          'language-not-supported': localAttempt ? 'The English speech pack is missing. Choose Speak answer to check setup again.' : 'Your browser’s speech service does not support English here. Use the on-screen controls.',
+          network: 'The speech service could not connect. Check your connection, then try again or use the on-screen controls.',
         };
         stop();
-        say(messages[event.error] || 'Local recognition could not finish. Try again, or use the on-screen controls. No cloud fallback was used.', true);
+        say(messages[event.error] || (localAttempt ? 'Local recognition could not finish. Try again, or use the on-screen controls. No cloud fallback was used.' : 'Browser speech could not finish. Try again, or use the on-screen controls.'), true);
       };
       recognition.onend = () => {
         if (!current() || token !== generation) return;
@@ -1120,11 +1154,11 @@ function renderQuestionSpeech(state, panel) {
     } catch (error) {
       if (current() && token === generation) { stop(); say(setupFailure(error), true); }
     } finally {
-      if (current() && token === generation) { operation = ''; update(); }
+      if (current() && token === generation) { operation = ''; update(); startMusic(); }
     }
   });
   const install = action('Download English speech pack', async () => {
-    if (!recognition || typeof Recognition.install !== 'function' || !canAnswer() || operation) return;
+    if (!recognition || !localCapable || typeof Recognition.install !== 'function' || !canAnswer() || operation) return;
     stop();
     const token = generation;
     operation = 'installing';
@@ -1166,9 +1200,12 @@ function renderQuestionSpeech(state, panel) {
   speak.setAttribute('aria-describedby', 'speech-help speech-status');
   controls.append(read);
   if (isPlayer) controls.append(speak, install, confirm);
-  area.append(controls, help, status, preview);
+  area.append(controls, help);
+  if (isPlayer && recognition) area.append(consent);
+  area.append(status, preview);
   panel.append(area);
-  if (!canRead || (isPlayer && !recognition)) say(`${!canRead ? 'Browser text-to-speech is unavailable. ' : ''}${isPlayer && !recognition ? 'On-device speech recognition is not supported here. Use the normal answer controls; a compatible browser on HTTPS is required.' : ''}`);
+  if (!canRead || (isPlayer && !recognition)) say(`${!canRead ? 'Browser text-to-speech is unavailable. ' : ''}${isPlayer && !recognition ? 'Microphone speech is unavailable here. Use the normal answer controls; browser support and HTTPS are required.' : ''}`);
+  else if (isPlayer && !localCapable && !browserSpeechConsent) say('Enable Allow browser speech to use Speak answer. Your browser provider may process the audio.');
   update();
   return {
     get active() { return Boolean(mode); },
