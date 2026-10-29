@@ -709,7 +709,7 @@ function renderGameSettings(state, panel) {
   const fields = element('div', 'settings-fields');
   [
     { id: 'round-seconds', label: 'Seconds per answer', min: 5, max: 120, value: state.settings.roundSeconds, hint: '5–120 seconds. Special rounds use the timers below.' },
-    { id: 'question-count', label: 'Questions', min: 2, max: state.maxQuestions, value: state.settings.questionCount, hint: `2–${state.maxQuestions}. Both guaranteed rounds land in the first 15.` },
+    { id: 'question-count', label: 'Questions', min: 3, max: state.maxQuestions, value: state.settings.questionCount, hint: `3–${state.maxQuestions}. Three guaranteed rounds in the first 20.` },
   ].forEach(({ id, label: text, min, max, value, hint }) => {
     const field = element('div', 'field');
     const label = element('label', '', text);
@@ -775,10 +775,10 @@ function readGameSettings() {
   const roundSeconds = Number(seconds.value);
   const questionCount = Number(count.value);
   const secondsInvalid = !Number.isInteger(roundSeconds) || roundSeconds < 5 || roundSeconds > 120;
-  const countInvalid = !Number.isInteger(questionCount) || questionCount < 2 || questionCount > currentState.maxQuestions;
+  const countInvalid = !Number.isInteger(questionCount) || questionCount < 3 || questionCount > currentState.maxQuestions;
   seconds.setAttribute('aria-invalid', String(secondsInvalid));
   count.setAttribute('aria-invalid', String(countInvalid));
-  $('#settings-error').textContent = secondsInvalid ? 'Enter a whole number of seconds between 5 and 120.' : countInvalid ? `Enter a whole number of questions between 2 and ${currentState.maxQuestions}.` : '';
+  $('#settings-error').textContent = secondsInvalid ? 'Enter a whole number of seconds between 5 and 120.' : countInvalid ? `Enter a whole number of questions between 3 and ${currentState.maxQuestions}.` : '';
   if (secondsInvalid || countInvalid) {
     (secondsInvalid ? seconds : count).focus();
     return null;

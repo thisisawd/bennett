@@ -28,7 +28,9 @@ function mixedQuestions(count) {
   const puzzle = questions.find((question) => question.type === 'puzzle');
   const dog = questions.find((question) => question.id === 'alex-dog');
   const earlyQuestions = ['alex-childhood-windows', 'lowell-micky-ward'].map((id) => questions.find((question) => question.id === id));
-  const selected = [...[questions[0], puzzle, dog].slice(0, Math.min(3, count - earlyQuestions.length)), ...earlyQuestions];
+  const garbagePlate = questions.find((question) => question.id === 'plate-ingredients');
+  const guaranteedQuestions = [...earlyQuestions, garbagePlate];
+  const selected = [...[questions[0], puzzle, dog].slice(0, Math.min(3, count - guaranteedQuestions.length)), ...guaranteedQuestions];
   const handmade = shuffled(questions.filter((question) => question.hostQuestion && !selected.includes(question)));
   while (selected.length < count && handmade.length) {
     const different = handmade.filter((question) => question.topic !== selected.at(-1).topic);
@@ -87,7 +89,9 @@ function mixedQuestions(count) {
     const photoPool = pool.filter((question) => question.photoQuestion);
     const candidates = handmadePool.length ? handmadePool : photosDue && photoPool.length ? photoPool : pool;
     const earlyRemaining = remaining.filter((question) => earlyQuestions.includes(question));
-    const question = earlyRemaining.length && order.length >= 15 - earlyRemaining.length ? earlyRemaining[0] : candidates[randomInt(candidates.length)];
+    const question = earlyRemaining.length && order.length >= 15 - earlyRemaining.length
+      ? earlyRemaining[0]
+      : order.length === 19 && remaining.includes(garbagePlate) ? garbagePlate : candidates[randomInt(candidates.length)];
     order.push(question);
     remaining.splice(remaining.indexOf(question), 1);
   }
@@ -95,11 +99,11 @@ function mixedQuestions(count) {
 }
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const roundDurationSeconds = (room) => room.questions[room.index].type === 'puzzle' ? 60 : room.questions[room.index].type === 'map' ? 20 : room.questions[room.index].video ? Math.max(30, room.settings.roundSeconds) : room.settings.roundSeconds;
-function gameSettings(body, current = { roundSeconds: 10, questionCount: 20 }) {
+function gameSettings(body, current = { roundSeconds: 15, questionCount: 30 }) {
   const roundSeconds = body.roundSeconds === undefined ? current.roundSeconds : body.roundSeconds;
   const questionCount = body.questionCount === undefined ? current.questionCount : body.questionCount;
   if (!Number.isInteger(roundSeconds) || roundSeconds < 5 || roundSeconds > 120) throw fail(400, 'Choose a whole number of seconds between 5 and 120.');
-  if (!Number.isInteger(questionCount) || questionCount < 2 || questionCount > MAX_QUESTIONS) throw fail(400, `Choose a whole number of questions between 2 and ${MAX_QUESTIONS}.`);
+  if (!Number.isInteger(questionCount) || questionCount < 3 || questionCount > MAX_QUESTIONS) throw fail(400, `Choose a whole number of questions between 3 and ${MAX_QUESTIONS}.`);
   return { roundSeconds, questionCount };
 }
 const getRoom = (body) => {
