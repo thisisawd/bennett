@@ -4,14 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#bd3039">
-  <meta name="description" content="44 questions about Alexander Bennett, from Microsoft design projects to Manchester roots and one very good dog. Play up to 30 together on your own devices.">
+  <meta name="description" content="46 questions about Alexander Bennett, from Microsoft design projects to Manchester roots and one very good dog. Play up to 30 together on your own devices.">
   <title>The Bennett Quiz — How well do you know Alexander?</title>
-  <link rel="stylesheet" href="style.css?v=windows-95">
+  <link rel="stylesheet" href="style.css?v=music-wave">
   <script src="config.js?v=bank-60" defer></script>
   <script src="nh-map.js?v=bank-60" defer></script>
   <script src="europe-map.js?v=map-reveals" defer></script>
   <script src="maps.js?v=map-reveals" defer></script>
-  <script src="app.js?v=windows-95" defer></script>
+  <script src="app.js?v=lowell-boxer" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -44,7 +44,7 @@
     </a>
     <nav class="header-actions" aria-label="Main navigation">
       <details class="appearance-settings" id="appearance-settings" open>
-        <summary class="appearance-summary">Theme &amp; music</summary>
+        <summary class="appearance-summary" aria-label="Theme and music settings"></summary>
         <div class="appearance-pickers">
           <div class="header-picker theme-picker">
             <label for="theme-select">Theme</label>
@@ -66,9 +66,9 @@
             </select>
             <span class="sr-only" id="music-hint">Original synthesized instrumentals, not artist recordings or live radio.</span>
           </div>
+          <button class="button button-outline button-small sound-button" id="sound-toggle" type="button" aria-pressed="false" aria-label="Music off. Selected track: Kahoot Inspired"><span class="sound-wave" id="sound-wave" aria-hidden="true"></span><span class="sound-label" id="sound-label">♫ Music off</span></button>
         </div>
       </details>
-      <button class="button button-outline button-small sound-button" id="sound-toggle" type="button" aria-pressed="false" aria-label="Music off. Selected track: Kahoot Inspired">♫ Music off</button>
       <button class="button button-primary button-small" id="host-button" type="button">Host</button>
     </nav>
   </header>

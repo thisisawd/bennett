@@ -27,7 +27,8 @@ const shuffled = (values) => {
 function mixedQuestions(count) {
   const puzzle = questions.find((question) => question.type === 'puzzle');
   const dog = questions.find((question) => question.id === 'alex-dog');
-  const selected = [questions[0], ...(count > 1 ? [puzzle] : []), ...(count > 2 ? [dog] : [])];
+  const earlyQuestions = ['alex-childhood-windows', 'lowell-micky-ward'].map((id) => questions.find((question) => question.id === id));
+  const selected = [...[questions[0], puzzle, dog].slice(0, Math.min(3, count - earlyQuestions.length)), ...earlyQuestions];
   const handmade = shuffled(questions.filter((question) => question.hostQuestion && !selected.includes(question)));
   while (selected.length < count && handmade.length) {
     const different = handmade.filter((question) => question.topic !== selected.at(-1).topic);
@@ -85,7 +86,8 @@ function mixedQuestions(count) {
     const photosDue = order.slice(-4).every((question) => !question.photoQuestion);
     const photoPool = pool.filter((question) => question.photoQuestion);
     const candidates = handmadePool.length ? handmadePool : photosDue && photoPool.length ? photoPool : pool;
-    const question = candidates[randomInt(candidates.length)];
+    const earlyRemaining = remaining.filter((question) => earlyQuestions.includes(question));
+    const question = earlyRemaining.length && order.length >= 15 - earlyRemaining.length ? earlyRemaining[0] : candidates[randomInt(candidates.length)];
     order.push(question);
     remaining.splice(remaining.indexOf(question), 1);
   }
@@ -97,7 +99,7 @@ function gameSettings(body, current = { roundSeconds: 10, questionCount: 20 }) {
   const roundSeconds = body.roundSeconds === undefined ? current.roundSeconds : body.roundSeconds;
   const questionCount = body.questionCount === undefined ? current.questionCount : body.questionCount;
   if (!Number.isInteger(roundSeconds) || roundSeconds < 5 || roundSeconds > 120) throw fail(400, 'Choose a whole number of seconds between 5 and 120.');
-  if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > MAX_QUESTIONS) throw fail(400, `Choose a whole number of questions between 1 and ${MAX_QUESTIONS}.`);
+  if (!Number.isInteger(questionCount) || questionCount < 2 || questionCount > MAX_QUESTIONS) throw fail(400, `Choose a whole number of questions between 2 and ${MAX_QUESTIONS}.`);
   return { roundSeconds, questionCount };
 }
 const getRoom = (body) => {
@@ -177,7 +179,7 @@ function publicState(room, body) {
     state.player = { name: player.name, avatar: player.avatar, score: player.score, correct: player.correct, selected: player.answers[room.index]?.selected ?? null };
   }
   if (['playing', 'reveal', 'results'].includes(room.status)) {
-    const { type = 'choice', mapId = 'new-hampshire', prompt, answers, category, explanation, source, image, video, revealImage, target } = room.questions[room.index];
+    const { type = 'choice', mapId = 'new-hampshire', prompt, answers, category, explanation, source, image, video, revealImage, resultsImage, target } = room.questions[room.index];
     state.question = { type, prompt, category, roundSeconds: roundDurationSeconds(room), remainingMs: room.status === 'playing' ? Math.max(0, room.deadline - Date.now()) : 0 };
     if (type === 'map') state.question.mapId = mapId;
     if (type === 'choice') state.question.answers = room.options[room.index].map((index) => answers[index]);
@@ -203,6 +205,7 @@ function publicState(room, body) {
         state.reveal.winner = room.puzzleWinner ? { name: room.puzzleWinner.name, avatar: room.puzzleWinner.avatar, elapsedMs: room.puzzleWinner.answers[room.index].elapsed } : null;
       }
       if (room.status === 'results') {
+        if (resultsImage) state.reveal.resultsImage = images[resultsImage];
         state.reveal.players = room.players.map((entry) => {
           const answer = entry.answers[room.index];
           return { name: entry.name, avatar: entry.avatar, selected: answer?.selected ?? null, correct: type === 'map' ? Boolean(answer?.closest) : type === 'puzzle' ? Boolean(answer?.completed) : answer?.selected === correctAnswer, distanceKm: answer?.distanceKm, ...(type === 'puzzle' ? { moves: entry.puzzleMoves, elapsedMs: answer?.elapsed } : {}), points: answer?.points || 0, score: entry.score };

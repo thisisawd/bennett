@@ -51,6 +51,7 @@ let soundEnabled = false;
 let audioContext;
 let musicTimer;
 let musicGain;
+let musicWave;
 let musicStep = 0;
 let musicNoise;
 let musicTrack = 'kahoot';
@@ -252,11 +253,34 @@ function playTone(kind) {
 }
 
 function updateSoundButton() {
-  $('#sound-toggle').textContent = `♫ Music ${soundEnabled ? 'on' : 'off'}`;
+  $('#sound-label').textContent = `♫ Music ${soundEnabled ? 'on' : 'off'}`;
   $('#sound-toggle').setAttribute('aria-pressed', String(soundEnabled));
   $('#sound-toggle').setAttribute('aria-label', `Music ${soundEnabled ? 'on' : 'off'}. Selected track: ${musicTracks[musicTrack].name}`);
 }
+const musicMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+function stopMusicWave() {
+  try { musicWave?.cancel(); } catch {}
+  musicWave = null;
+}
+musicMotion.addEventListener('change', stopMusicWave);
+function syncMusicWave(at, beatSeconds) {
+  const wave = $('#sound-wave');
+  if (musicMotion.matches || typeof wave?.animate !== 'function') return;
+  try {
+    const duration = beatSeconds * 1000;
+    const existing = Boolean(musicWave);
+    musicWave ??= wave.animate([
+      { transform: 'translateX(-8%) rotate(-10deg)', opacity: .22 },
+      { transform: 'translateX(4%) rotate(-5deg)', opacity: .07, offset: .5 },
+      { transform: 'translateX(-8%) rotate(-10deg)', opacity: .22 },
+    ], { duration, iterations: Infinity, easing: 'ease-in-out' });
+    const now = document.timeline?.currentTime;
+    if (typeof now !== 'number') { stopMusicWave(); return; }
+    musicWave.startTime = now + (at - audioContext.currentTime) * 1000 - (existing ? duration : 0);
+  } catch { stopMusicWave(); }
+}
 function stopMusic() {
+  stopMusicWave();
   clearInterval(musicTimer);
   musicTimer = null;
   if (musicGain && audioContext) {
@@ -286,13 +310,14 @@ function startMusic() {
     let nextAt = audioContext.currentTime + .04;
     musicStep = 0;
     const schedule = () => {
-      if (audioContext.state === 'suspended') { nextAt = audioContext.currentTime + .04; return; }
+      if (audioContext.state !== 'running') { stopMusicWave(); nextAt = audioContext.currentTime + .04; return; }
       try {
         if (nextAt < audioContext.currentTime) nextAt = audioContext.currentTime + .02;
         while (nextAt < audioContext.currentTime + .12) {
           const bar = Math.floor(musicStep / 8) % chords.length;
           const step = musicStep % 8;
           const chord = chords[bar];
+          if (step % 2 === 0) syncMusicWave(nextAt, stepDuration * 2);
           if (trackId === 'kahoot') {
             if (step === 0) chord.forEach((note) => synthNote(note, nextAt, 1.65, .065, 'sine', output));
             if (step % 2 === 0) synthNote(chord[step === 4 ? 2 : 0] - 24, nextAt, .23, .32, 'triangle', output);
@@ -684,7 +709,7 @@ function renderGameSettings(state, panel) {
   const fields = element('div', 'settings-fields');
   [
     { id: 'round-seconds', label: 'Seconds per answer', min: 5, max: 120, value: state.settings.roundSeconds, hint: '5–120 seconds. Special rounds use the timers below.' },
-    { id: 'question-count', label: 'Questions', min: 1, max: state.maxQuestions, value: state.settings.questionCount, hint: `1–${state.maxQuestions}. No repeats. No mercy.` },
+    { id: 'question-count', label: 'Questions', min: 2, max: state.maxQuestions, value: state.settings.questionCount, hint: `2–${state.maxQuestions}. Both guaranteed rounds land in the first 15.` },
   ].forEach(({ id, label: text, min, max, value, hint }) => {
     const field = element('div', 'field');
     const label = element('label', '', text);
@@ -750,10 +775,10 @@ function readGameSettings() {
   const roundSeconds = Number(seconds.value);
   const questionCount = Number(count.value);
   const secondsInvalid = !Number.isInteger(roundSeconds) || roundSeconds < 5 || roundSeconds > 120;
-  const countInvalid = !Number.isInteger(questionCount) || questionCount < 1 || questionCount > currentState.maxQuestions;
+  const countInvalid = !Number.isInteger(questionCount) || questionCount < 2 || questionCount > currentState.maxQuestions;
   seconds.setAttribute('aria-invalid', String(secondsInvalid));
   count.setAttribute('aria-invalid', String(countInvalid));
-  $('#settings-error').textContent = secondsInvalid ? 'Enter a whole number of seconds between 5 and 120.' : countInvalid ? `Enter a whole number of questions between 1 and ${currentState.maxQuestions}.` : '';
+  $('#settings-error').textContent = secondsInvalid ? 'Enter a whole number of seconds between 5 and 120.' : countInvalid ? `Enter a whole number of questions between 2 and ${currentState.maxQuestions}.` : '';
   if (secondsInvalid || countInvalid) {
     (secondsInvalid ? seconds : count).focus();
     return null;
@@ -1257,6 +1282,7 @@ function renderRoundResults(state) {
   const summary = isPuzzle ? reveal.winner ? `${avatars[reveal.winner.avatar].emoji} ${reveal.winner.name} wins the puzzle round!` : 'No completed puzzle. Zero points this round.' : isMap ? answered ? `${correctCount} closest ${correctCount === 1 ? 'pin' : 'pins'} · ${answered} ${answered === 1 ? 'location' : 'locations'} locked in.` : 'No pins submitted. Zero points this round.' : `${correctCount} of ${reveal.players.length} got it right.`;
   panel.append(element('p', 'results-summary', summary));
   panel.append(element('p', 'muted', isPuzzle ? 'The first completed board earns 1,000 points; other players receive zero.' : isMap ? `Correct location: ${reveal.target.name}.` : `Correct answer: ${state.question.answers[reveal.correctAnswer]}.`));
+  if (reveal.resultsImage) renderQuestionImage(panel, reveal.resultsImage);
   if (isMap) renderMapRound(state, panel);
   const list = element('ul', 'round-results');
   reveal.players.forEach((player, index) => {
