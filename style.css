@@ -152,10 +152,10 @@ h1 { font-family: var(--display); font-size: clamp(46px, 4.7vw, 68px); font-weig
 :root[data-theme="ll-bean"] .art-grid { background-image: repeating-radial-gradient(ellipse at 18% 80%, transparent 0 15px, var(--art-grid) 16px 17px, transparent 18px 34px); background-size: 140% 140%; }
 :root[data-theme="ll-bean"] .art-sticker { background: var(--primary); color: var(--paper); border: 2px solid var(--paper); box-shadow: 0 0 0 1px var(--primary); }
 .art-float { transform-box: fill-box; transform-origin: center; animation: illustration-drift 8s ease-in-out infinite; }
-.art-cap { --drift-x: 3px; --drift-y: -5px; --drift-rotation: 1deg; }
-.art-notebook { --drift-x: -2px; --drift-y: -3px; --drift-rotation: -1deg; animation-duration: 10s; animation-delay: -3s; }
-.art-dog { --drift-x: 1px; --drift-y: -3px; --drift-rotation: -.5deg; animation-duration: 7s; animation-delay: -2s; }
-.bennett-art.motion-paused .art-float { animation-play-state: paused; }
+.art-cap { --drift-x: 5px; --drift-y: -12px; --drift-rotation: 2deg; }
+.art-notebook { --drift-x: -5px; --drift-y: -8px; --drift-rotation: -2deg; animation-duration: 10s; animation-delay: -3s; }
+.art-dog { --drift-x: 2px; --drift-y: -7px; --drift-rotation: -.8deg; animation-duration: 7s; animation-delay: -2s; }
+.bennett-art.motion-still .art-float { animation: none; }
 .art-motion-controls { display: flex; justify-content: flex-end; margin-top: 8px; }
 .art-motion-toggle { min-height: 44px; padding: 8px 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--paper); color: var(--muted); font-size: var(--text-caption); transition: background var(--motion-fast), color var(--motion-fast); }
 .art-motion-toggle:hover { background: var(--accent-soft); color: var(--ink); }
@@ -296,6 +296,12 @@ button.map-canvas { cursor: crosshair; }
 .timer { display: flex; align-items: center; gap: 8px; font-family: var(--display); font-weight: 600; min-width: 66px; padding: 9px 13px; border: 1px solid var(--control-border); border-radius: 28px; background: var(--surface); }
 .timer.urgent { border-color: var(--red); background: var(--accent-soft); color: var(--red); animation: timer-nudge .9s ease-out 3; }
 .question-category { font-size: var(--text-caption); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.question-speech { margin: 18px 0; padding: 14px; border: 1px solid var(--control-border); border-radius: 10px; background: var(--paper); min-width: 0; }
+.speech-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.speech-actions .button { min-height: 44px; max-width: 100%; padding: 10px 14px; font-size: var(--text-small); overflow-wrap: anywhere; }
+.speech-help, .speech-status { margin: 10px 0 0; line-height: 1.6; }
+.speech-status:empty { display: none; }
+.speech-preview { margin: 12px 0 0; padding: 12px; border-left: 3px solid var(--accent-border); background: var(--surface); overflow-wrap: anywhere; font-size: var(--text-small); line-height: 1.6; }
 .answer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 26px 0 16px; }
 .answer-button { display: flex; align-items: center; gap: 14px; text-align: left; min-height: 85px; min-width: 0; padding: 18px; border: 1px solid var(--control-border); border-radius: 12px; background: var(--surface); font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; flex-wrap: wrap; transition: transform var(--motion-fast) var(--motion-ease), background var(--motion-fast), border-color var(--motion-fast); animation: answer-arrive .32s var(--motion-ease) backwards; }
 .answer-button:nth-child(2) { background: var(--accent-soft); border-color: var(--accent-border); animation-delay: .04s; }

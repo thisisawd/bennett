@@ -35,6 +35,7 @@ let pollTimer;
 let countdownTimer;
 let imageTimer;
 let videoCleanup;
+let questionSpeech;
 let mapObserver;
 let puzzleProgress;
 let puzzleSelection = null;
@@ -255,7 +256,7 @@ function stopMusic() {
 }
 
 function startMusic() {
-  if (!soundEnabled || musicTimer || document.hidden) return;
+  if (!soundEnabled || musicTimer || document.hidden || questionSpeech?.active) return;
   const video = experience.querySelector('video');
   if (video && !video.paused && !video.ended) return;
   try {
@@ -359,16 +360,47 @@ $('#music-track').addEventListener('change', (event) => {
   announce(`${musicTracks[musicTrack].name} selected.${soundEnabled ? '' : ' Turn Music on to listen.'}`);
 });
 $('#art-motion-toggle').addEventListener('click', (event) => {
-  const paused = $('#bennett-art').classList.toggle('motion-paused');
-  event.currentTarget.textContent = paused ? 'Resume illustration' : 'Pause illustration';
-  announce(paused ? 'Illustration paused.' : 'Illustration playing.');
+  const animations = illustrationAnimations();
+  if (!animations.length) return refreshIllustrationMotion();
+  const pause = animations.some((animation) => animation.playState !== 'paused');
+  try {
+    animations.forEach((animation) => pause ? animation.pause() : animation.play());
+    event.currentTarget.textContent = pause ? 'Resume illustration' : 'Pause illustration';
+    announce(pause ? 'Illustration paused.' : 'Illustration playing.');
+  } catch {
+    $('#bennett-art').classList.add('motion-still');
+    $('#art-motion-controls').classList.add('hidden');
+    if (document.activeElement === event.currentTarget) $('#room-code').focus();
+  }
 });
+function illustrationAnimations() {
+  return $('#bennett-art').getAnimations?.({ subtree: true }).filter((animation) => animation.animationName === 'illustration-drift') || [];
+}
+function refreshIllustrationMotion() {
+  const art = $('#bennett-art');
+  art.classList.remove('motion-still');
+  const animations = illustrationAnimations();
+  const available = animations.length > 0;
+  art.classList.toggle('motion-still', !available);
+  $('#art-motion-controls').classList.toggle('hidden', !available);
+  $('#art-motion-toggle').textContent = animations.some((animation) => animation.playState === 'paused') ? 'Resume illustration' : 'Pause illustration';
+  if (!available && document.activeElement === $('#art-motion-toggle')) $('#room-code').focus();
+}
+refreshIllustrationMotion();
+window.matchMedia?.('(prefers-reduced-motion: reduce)')?.addEventListener?.('change', refreshIllustrationMotion);
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) stopMusic();
+  if (document.hidden) {
+    questionSpeech?.stop();
+    stopMusic();
+  }
   else {
     startMusic();
     if (session) pollState();
   }
+});
+window.addEventListener('pagehide', () => {
+  questionSpeech?.stop();
+  stopMusic();
 });
 
 async function request(path, body) {
@@ -482,6 +514,8 @@ function resetHome() {
   clearTimeout(pollTimer);
   clearInterval(countdownTimer);
   clearTimeout(imageTimer);
+  questionSpeech?.dispose();
+  questionSpeech = null;
   videoCleanup?.();
   videoCleanup = null;
   mapObserver?.disconnect();
@@ -493,6 +527,7 @@ function resetHome() {
   experience.replaceChildren();
   experience.classList.add('hidden');
   $('#landing').classList.remove('hidden');
+  refreshIllustrationMotion();
   $('#how-it-works').classList.remove('hidden');
   $('#host-button').classList.remove('hidden');
   $('#room-code').focus();
@@ -543,6 +578,8 @@ async function pollState() {
 function makePanel(eyebrow, title) {
   clearInterval(countdownTimer);
   clearTimeout(imageTimer);
+  questionSpeech?.dispose();
+  questionSpeech = null;
   videoCleanup?.();
   videoCleanup = null;
   mapObserver?.disconnect();
@@ -795,6 +832,7 @@ function renderQuestion(state) {
   progress.setAttribute('aria-label', 'Quiz completion');
   panel.insertBefore(progress, panel.querySelector('.eyebrow'));
   panel.append(element('p', 'question-category', question.category));
+  questionSpeech = renderQuestionSpeech(state, panel);
   if (question.video) renderQuestionVideo(panel, question.video);
   if (question.image?.identification && question.type !== 'puzzle') renderQuestionImage(panel, question.image);
   if (question.type === 'puzzle') renderPuzzleRound(state, panel);
@@ -852,6 +890,7 @@ function renderQuestion(state) {
 
 function updateLiveRound(state) {
   if (state?.status !== 'playing') return;
+  questionSpeech?.update();
   const selected = state.player?.selected ?? pendingAnswer?.answer ?? null;
   const expired = performance.now() >= roundEndsAt;
   const isMap = state.question.type === 'map';
@@ -873,6 +912,270 @@ function updateLiveRound(state) {
   const hasSelection = selected !== null || (isMap && Boolean(pendingAnswer?.location));
   const message = expired ? 'Time’s up! Revealing the answers…' : isPuzzle ? state.role === 'host' ? `Players are solving their own boards. First to finish wins; the limit is ${state.question.roundSeconds} seconds.` : `${puzzleProgress?.moves || 0} swaps saved. First to finish wins.` : state.role === 'host' ? `${answered} of ${state.players.length} answers locked in. Everyone has the full ${state.question.roundSeconds} seconds.` : pendingAnswer && !pendingAnswer.accepted ? 'Sending your answer… Your choice is saved here while we reconnect.' : hasSelection ? `${isMap ? 'Location' : `Answer ${'ABCD'[selected]}`} locked in. Waiting for the reveal…` : isMap ? 'Place a pin, then lock your location before the timer reaches zero.' : 'Pick your answer before the timer reaches zero.';
   if ($('#round-status') && $('#round-status').textContent !== message) $('#round-status').textContent = message;
+}
+
+function normalizeSpeech(text) {
+  return text.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/&/g, ' and ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+function matchSpokenAnswer(text, state) {
+  const spoken = normalizeSpeech(text).replace(/^(?:(?:my|the) answer is|i choose|answer is|option|choice|answer|choose|pick|select|letter|pin|place) /, '');
+  if (state.question.type === 'puzzle') {
+    const swap = spoken.match(/^(?:swap|switch)(?: positions?| pieces?)? (\w+) (?:and|with) (\w+)$/);
+    if (!swap) return null;
+    const numbers = { one: 1, two: 2, to: 2, too: 2, three: 3, four: 4, for: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 };
+    const [from, to] = swap.slice(1).map((value) => (numbers[value] ?? Number(value)) - 1);
+    if (![from, to].every((value) => Number.isInteger(value) && value >= 0 && value < 9) || from === to) return null;
+    return { type: 'puzzle', from, to, moves: puzzleProgress?.moves, label: `Swap positions ${from + 1} and ${to + 1}` };
+  }
+  if (state.question.type === 'map') {
+    const towns = window.BENNETT_MAPS?.[state.question.mapId || 'new-hampshire']?.towns || [];
+    const matches = towns.map((town, index) => ({ ...town, index })).filter((town) => normalizeSpeech(town.name) === spoken);
+    return matches.length === 1 ? { type: 'map', ...matches[0], label: matches[0].name } : null;
+  }
+  const aliases = [['a', 'ay', 'one', '1'], ['b', 'be', 'bee', 'two', 'to', 'too', '2'], ['c', 'see', 'sea', 'three', '3'], ['d', 'dee', 'four', 'for', '4']];
+  const matches = state.question.answers.map((answer, index) => ({ answer, index })).filter(({ answer, index }) => normalizeSpeech(answer) === spoken || aliases[index]?.includes(spoken));
+  return matches.length === 1 ? { type: 'choice', answer: matches[0].index, label: `${'ABCD'[matches[0].index]}: ${matches[0].answer}` } : null;
+}
+
+function renderQuestionSpeech(state, panel) {
+  const speechSession = session;
+  const area = element('div', 'question-speech');
+  area.setAttribute('role', 'group');
+  area.setAttribute('aria-label', 'Question speech controls');
+  const controls = element('div', 'speech-actions');
+  const status = element('p', 'muted speech-status');
+  status.id = 'speech-status';
+  status.setAttribute('role', 'status');
+  const help = element('p', 'muted speech-help');
+  help.id = 'speech-help';
+  const preview = element('p', 'speech-preview hidden');
+  const isPlayer = state.role === 'player' && state.status === 'playing';
+  const hint = state.question.type === 'puzzle' ? 'Say swap 1 and 2, using positions 1–9.' : state.question.type === 'map' ? 'Say a place from the location dropdown.' : 'Say A, B, C, or D, or the full answer.';
+  help.textContent = isPlayer ? `${hint} Review before confirming. Recognition stays on-device. The clock keeps running.` : 'Hear the question and its choices using your browser’s voice.';
+  let disposed = false;
+  let mode = '';
+  let operation = '';
+  let generation = 0;
+  let audioTimer;
+  let utterance;
+  let candidate = null;
+  let recognition;
+  const waits = new Set();
+  const synthesis = window.speechSynthesis;
+  const canRead = Boolean(synthesis && window.SpeechSynthesisUtterance);
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (isPlayer && window.isSecureContext && Recognition && typeof Recognition.available === 'function') {
+    try {
+      recognition = new Recognition();
+      if (!('processLocally' in recognition)) recognition = null;
+      else {
+        recognition.processLocally = true;
+        recognition.lang = 'en-US';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        if (recognition.processLocally !== true) recognition = null;
+      }
+    } catch { recognition = null; }
+  }
+  const say = (text, error = false) => {
+    status.className = `${error ? 'form-error' : 'muted'} speech-status`;
+    status.textContent = text;
+  };
+  const setupFailure = (error) => ['NotAllowedError', 'SecurityError'].includes(error?.name) ? 'This page or browser blocks on-device speech. Check site permissions, then retry, or use the on-screen controls.' : error?.message || 'Speech setup failed. Try again, or use the on-screen controls.';
+  const current = () => !disposed && session === speechSession && currentState?.index === state.index && currentState?.status === state.status && area.isConnected;
+  const canAnswer = () => current() && isPlayer && currentState.status === 'playing' && performance.now() < roundEndsAt && currentState.player?.selected === null && !pendingAnswer && (state.question.type !== 'puzzle' || (puzzleReady && !puzzleBusy && !pendingPuzzleMove)) && (state.question.type !== 'map' || Boolean($('#map-town')));
+  const update = () => {
+    read.disabled = !canRead;
+    speak.disabled = !recognition || !canAnswer() || Boolean(operation);
+    install.disabled = !canAnswer() || Boolean(operation);
+    confirm.disabled = !candidate || !canAnswer() || Boolean(operation);
+    if ((mode || operation) && (!current() || document.hidden || (state.status === 'playing' && performance.now() >= roundEndsAt) || (mode !== 'reading' && !canAnswer()))) stop();
+  };
+  const stop = () => {
+    const previous = mode || operation;
+    generation++;
+    operation = '';
+    waits.forEach((cancel) => cancel());
+    waits.clear();
+    clearTimeout(audioTimer);
+    mode = '';
+    if (utterance) {
+      utterance.onend = utterance.onerror = utterance.onstart = null;
+      utterance = null;
+      synthesis.cancel();
+    }
+    if (recognition) {
+      recognition.onresult = recognition.onerror = recognition.onend = recognition.onstart = null;
+      try { recognition.abort(); } catch { /* Recognition may already be stopped. */ }
+    }
+    read.textContent = 'Read question';
+    speak.textContent = 'Speak answer';
+    if (!disposed) {
+      if (previous) say('Speech stopped. Your on-screen controls still work.');
+      update();
+    }
+    startMusic();
+  };
+  const waitFor = (promise, milliseconds) => new Promise((resolve, reject) => {
+    const cancel = () => { clearTimeout(timer); waits.delete(cancel); reject(new Error('Speech setup cancelled.')); };
+    const timer = setTimeout(() => { waits.delete(cancel); reject(new Error('Speech setup timed out. Check your connection or browser settings, then retry.')); }, milliseconds);
+    waits.add(cancel);
+    Promise.resolve(promise).then(resolve, reject).finally(() => { clearTimeout(timer); waits.delete(cancel); });
+  });
+  const startAudio = (nextMode) => {
+    mode = nextMode;
+    stopMusic();
+    experience.querySelector('video')?.pause();
+  };
+  const read = action('Read question', () => {
+    if (mode === 'reading') return stop();
+    stop();
+    if (!canRead || !current()) return;
+    try {
+      const choices = state.question.answers?.map((answer, index) => `${'ABCD'[index]}. ${answer}.`).join(' ') || '';
+      utterance = new window.SpeechSynthesisUtterance(`${state.question.prompt} ${choices}`);
+      utterance.lang = 'en-US';
+      const voices = synthesis.getVoices();
+      utterance.voice = voices.find((voice) => voice.localService && voice.lang.toLowerCase().startsWith('en')) || voices.find((voice) => voice.lang.toLowerCase().startsWith('en')) || null;
+      const token = generation;
+      const failed = (message) => { if (!current() || token !== generation) return; stop(); say(message, true); };
+      utterance.onstart = () => {
+        if (!current() || token !== generation) return;
+        clearTimeout(audioTimer);
+        say('Reading the question. Choose Stop reading to stop.');
+        audioTimer = setTimeout(() => failed('Reading timed out. Try again, or read the question on screen.'), Math.min(120000, Math.max(15000, utterance.text.length * 100)));
+      };
+      utterance.onend = () => { if (current() && token === generation) { stop(); say('Question read.'); } };
+      utterance.onerror = () => failed('Your browser could not read the question. Check its voice or audio settings, then retry.');
+      startAudio('reading');
+      read.textContent = 'Stop reading';
+      say('Starting your browser’s voice…');
+      audioTimer = setTimeout(() => failed('Speech playback did not start. Check your browser’s voice settings and try again.'), 8000);
+      synthesis.speak(utterance);
+    } catch { stop(); say('Speech playback is unavailable. You can still read the question on screen.', true); }
+  });
+  const speak = action('Speak answer', async () => {
+    if (mode === 'listening' || mode === 'starting') return stop();
+    stop();
+    if (!recognition || !canAnswer()) return;
+    candidate = null;
+    confirm.classList.add('hidden');
+    const token = generation;
+    operation = 'checking';
+    say('Checking on-device speech recognition…');
+    update();
+    try {
+      const availability = await waitFor(Recognition.available({ langs: ['en-US'], processLocally: true }), 8000);
+      if (!current() || token !== generation || !canAnswer()) return;
+      operation = '';
+      install.classList.toggle('hidden', availability !== 'downloadable' || typeof Recognition.install !== 'function');
+      if (availability !== 'available') {
+        say(availability === 'downloadable' ? 'Download the English speech pack once to recognize answers on this device. The timer keeps running.' : availability === 'downloading' ? 'The speech pack is still downloading. Use the on-screen controls, then try Speak answer again.' : 'On-device English recognition is unavailable in this browser. Use the on-screen controls.', true);
+        return;
+      }
+      recognition.processLocally = true;
+      if (recognition.processLocally !== true) throw new Error('This browser cannot guarantee on-device recognition. Use the on-screen controls.');
+      recognition.onstart = () => {
+        if (!current() || token !== generation) return;
+        mode = 'listening';
+        say('Listening on this device… Speak now, or choose Stop listening.');
+      };
+      recognition.onresult = (event) => {
+        if (!current() || token !== generation || !canAnswer()) return;
+        const result = event.results[event.resultIndex];
+        if (!result?.isFinal) return;
+        const transcript = result[0]?.transcript?.trim() || '';
+        stop();
+        candidate = transcript ? matchSpokenAnswer(transcript, currentState) : null;
+        preview.textContent = transcript ? `Heard: “${transcript}”${candidate ? ` · ${candidate.label}` : ''}` : '';
+        preview.classList.toggle('hidden', !transcript);
+        confirm.classList.toggle('hidden', !candidate);
+        say(candidate ? 'Check the match, then choose Confirm spoken answer.' : `No clear match. ${hint} Try again or use the on-screen controls.`, !candidate);
+        update();
+      };
+      recognition.onerror = (event) => {
+        if (!current() || token !== generation) return;
+        const messages = {
+          'not-allowed': 'Microphone access was denied. Allow it in your browser’s site settings, then try Speak answer again.',
+          'service-not-allowed': 'Your browser or page permissions block local recognition. Check site settings, or use the on-screen controls.',
+          'audio-capture': 'No usable microphone was found. Connect or enable one, then try again.',
+          'no-speech': 'No speech was heard. Try again, or use the on-screen controls.',
+          'language-not-supported': 'The English speech pack is missing. Choose Speak answer to check setup again.',
+        };
+        stop();
+        say(messages[event.error] || 'Local recognition could not finish. Try again, or use the on-screen controls. No cloud fallback was used.', true);
+      };
+      recognition.onend = () => {
+        if (!current() || token !== generation) return;
+        stop();
+        say('No answer captured. Try Speak answer again, or use the on-screen controls.');
+      };
+      startAudio('starting');
+      speak.textContent = 'Stop listening';
+      say('Starting the microphone… Allow access if your browser asks.');
+      audioTimer = setTimeout(() => { if (current() && token === generation) { stop(); say('Listening timed out. Try again, or use the on-screen controls.', true); } }, 12000);
+      recognition.start();
+    } catch (error) {
+      if (current() && token === generation) { stop(); say(setupFailure(error), true); }
+    } finally {
+      if (current() && token === generation) { operation = ''; update(); }
+    }
+  });
+  const install = action('Download English speech pack', async () => {
+    if (!recognition || typeof Recognition.install !== 'function' || !canAnswer() || operation) return;
+    stop();
+    const token = generation;
+    operation = 'installing';
+    say('Downloading the English speech pack… It may finish after this round. The timer keeps running.');
+    update();
+    try {
+      const installed = await waitFor(Recognition.install({ langs: ['en-US'] }), 60000);
+      if (!current() || token !== generation) return;
+      install.classList.toggle('hidden', installed);
+      say(installed ? 'Speech pack ready. Choose Speak answer to start.' : 'The speech pack could not download. Check your connection and retry, or use the on-screen controls.', !installed);
+    } catch (error) {
+      if (current() && token === generation) say(setupFailure(error), true);
+    } finally {
+      if (current() && token === generation) { operation = ''; update(); }
+    }
+  });
+  const confirm = action('Confirm spoken answer', () => {
+    if (!candidate || !canAnswer()) return;
+    const answer = candidate;
+    stop();
+    if (answer.type === 'puzzle') {
+      if (answer.moves !== puzzleProgress?.moves) { candidate = null; confirm.classList.add('hidden'); say('Your board changed. Speak the swap again, or use the puzzle controls.', true); return; }
+      puzzleSelection = null;
+      selectPuzzlePiece(answer.from);
+      selectPuzzlePiece(answer.to);
+    } else if (answer.type === 'map') {
+      const towns = $('#map-town');
+      towns.value = String(answer.index);
+      towns.dispatchEvent(new Event('change', { bubbles: true }));
+      if (mapDraft) submitAnswer({ ...mapDraft });
+    } else submitAnswer(answer.answer);
+    candidate = null;
+    confirm.classList.add('hidden');
+    update();
+  }, true);
+  install.classList.add('hidden');
+  confirm.classList.add('hidden');
+  read.setAttribute('aria-describedby', 'speech-help speech-status');
+  speak.setAttribute('aria-describedby', 'speech-help speech-status');
+  controls.append(read);
+  if (isPlayer) controls.append(speak, install, confirm);
+  area.append(controls, help, status, preview);
+  panel.append(area);
+  if (!canRead || (isPlayer && !recognition)) say(`${!canRead ? 'Browser text-to-speech is unavailable. ' : ''}${isPlayer && !recognition ? 'On-device speech recognition is not supported here. Use the normal answer controls; a compatible browser on HTTPS is required.' : ''}`);
+  update();
+  return {
+    get active() { return Boolean(mode); },
+    update,
+    stop,
+    dispose() { disposed = true; stop(); },
+  };
 }
 
 function renderRoundReveal(state, panel) {
