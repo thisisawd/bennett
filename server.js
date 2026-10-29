@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomBytes, randomInt } = require('node:crypto');
 const { questions, images } = require('./questions');
-const { bounds } = require('./nh-map');
+const maps = require('./maps');
 
 const PORT = Number(process.env.PORT) || 3000;
 const ROOM_MS = 6 * 60 * 60 * 1000;
@@ -23,8 +23,32 @@ const shuffled = (values) => {
   return order;
 };
 function mixedQuestions(count) {
-  const order = [questions[0]];
-  const remaining = questions.slice(1);
+  const puzzle = questions.find((question) => question.type === 'puzzle');
+  const dog = questions.find((question) => question.id === 'alex-dog');
+  const selected = [questions[0], ...(count > 1 ? [puzzle] : []), ...(count > 2 ? [dog] : [])];
+  const photos = shuffled(questions.filter((question) => question.photoQuestion && !selected.includes(question)));
+  const photoCount = Math.max(0, Math.min(count - selected.length, Math.ceil((count - 1) / 3) - selected.filter((question) => question.photoQuestion).length));
+  selected.push(...photos.slice(0, photoCount));
+  const localTopics = new Set(['rochester', 'rit', 'manchester', 'new-hampshire']);
+  const takeBalanced = (candidates, target) => {
+    const available = candidates.filter((question) => !selected.includes(question));
+    while (selected.length < target && available.length) {
+      const counts = new Map();
+      selected.forEach((question) => counts.set(question.topic, (counts.get(question.topic) || 0) + 1));
+      const minimum = Math.min(...available.map((question) => counts.get(question.topic) || 0));
+      const topics = [...new Set(available.filter((question) => (counts.get(question.topic) || 0) === minimum).map((question) => question.topic))];
+      const topic = topics[randomInt(topics.length)];
+      const pool = available.filter((question) => question.topic === topic);
+      const question = pool[randomInt(pool.length)];
+      selected.push(question);
+      available.splice(available.indexOf(question), 1);
+    }
+  };
+  // Reserve photo rounds and a local majority before filling from the other themes.
+  takeBalanced(questions.filter((question) => localTopics.has(question.topic)), Math.min(count, selected.length + Math.ceil(count * .55) - 1));
+  takeBalanced(questions, count);
+  const order = selected.slice(0, Math.min(count, 3));
+  const remaining = selected.slice(order.length);
   while (order.length < count) {
     const recent = order.slice(-2).map((question) => question.topic);
     const counts = new Map();
@@ -38,13 +62,17 @@ function mixedQuestions(count) {
     }));
     const spaced = viable.filter((question) => !recent.includes(question.topic));
     const pool = spaced.length ? spaced : viable.length ? viable : different.length ? different : remaining;
-    const question = pool[randomInt(pool.length)];
+    const photosDue = order.slice(-4).every((question) => !question.photoQuestion);
+    const photoPool = pool.filter((question) => question.photoQuestion);
+    const candidates = photosDue && photoPool.length ? photoPool : pool;
+    const question = candidates[randomInt(candidates.length)];
     order.push(question);
     remaining.splice(remaining.indexOf(question), 1);
   }
   return order;
 }
 const fail = (status, message) => Object.assign(new Error(message), { status });
+const roundDurationSeconds = (room) => room.questions[room.index].type === 'puzzle' ? 30 : room.settings.roundSeconds;
 function gameSettings(body, current = { roundSeconds: 10, questionCount: 20 }) {
   const roundSeconds = body.roundSeconds === undefined ? current.roundSeconds : body.roundSeconds;
   const questionCount = body.questionCount === undefined ? current.questionCount : body.questionCount;
@@ -77,9 +105,22 @@ function distanceKm(first, second) {
 }
 
 function updateRound(room, now = Date.now()) {
-  if (room.status !== 'playing' || now < room.deadline) return;
+  if (room.status !== 'playing') return;
   const question = room.questions[room.index];
+  if (question.type === 'puzzle') {
+    if (!room.puzzleWinner && now < room.deadline) return;
+    if (room.puzzleWinner) {
+      const winner = room.puzzleWinner;
+      winner.answers[room.index] = { selected: true, completed: true, elapsed: Math.max(0, 30000 - (room.deadline - now)), points: 1000 };
+      winner.score += 1000;
+      winner.correct++;
+    }
+    room.status = 'reveal';
+    return;
+  }
+  if (now < room.deadline) return;
   if (question.type === 'map') {
+    const map = maps[question.mapId || 'new-hampshire'];
     const answers = room.players.map((player) => player.answers[room.index]).filter(Boolean);
     answers.forEach((answer) => { answer.distanceKm = distanceKm(answer.selected, question.target); });
     const closest = Math.min(...answers.map((answer) => answer.distanceKm));
@@ -87,7 +128,7 @@ function updateRound(room, now = Date.now()) {
       const answer = player.answers[room.index];
       if (!answer) return;
       answer.closest = Math.abs(answer.distanceKm - closest) < .000001;
-      answer.points = answer.closest ? 1000 : Math.min(999, Math.round(1000 * Math.exp(-(answer.distanceKm - closest) / 75)));
+      answer.points = answer.closest ? 1000 : Math.min(999, Math.round(1000 * Math.exp(-(answer.distanceKm - closest) / map.distanceScaleKm)));
       player.score += answer.points;
       if (answer.closest) player.correct++;
     });
@@ -116,20 +157,34 @@ function publicState(room, body) {
     state.player = { name: player.name, avatar: player.avatar, score: player.score, correct: player.correct, selected: player.answers[room.index]?.selected ?? null };
   }
   if (['playing', 'reveal', 'results'].includes(room.status)) {
-    const { type = 'choice', prompt, answers, category, explanation, source, image, revealImage, target } = room.questions[room.index];
-    state.question = { type, prompt, category, remainingMs: Math.max(0, room.deadline - Date.now()) };
+    const { type = 'choice', mapId = 'new-hampshire', prompt, answers, category, explanation, source, image, revealImage, target } = room.questions[room.index];
+    state.question = { type, prompt, category, roundSeconds: roundDurationSeconds(room), remainingMs: room.status === 'playing' ? Math.max(0, room.deadline - Date.now()) : 0 };
+    if (type === 'map') state.question.mapId = mapId;
     if (type === 'choice') state.question.answers = room.options[room.index].map((index) => answers[index]);
+    if (type === 'puzzle') {
+      state.question.board = host ? room.puzzleOrder : player.puzzleBoard;
+      if (player) state.question.moves = player.puzzleMoves;
+    }
     if (!revealImage) state.question.image = images[image];
     if (room.status === 'reveal' || room.status === 'results') {
-      const correctAnswer = type === 'map' ? null : room.options[room.index].indexOf(room.questions[room.index].correct);
+      const correctAnswer = type === 'choice' ? room.options[room.index].indexOf(room.questions[room.index].correct) : null;
       state.reveal = {
         correctAnswer, explanation, source, target,
         image: revealImage ? images[image] : undefined,
       };
+      if (type === 'map') {
+        state.reveal.guesses = room.players.map((entry) => {
+          const answer = entry.answers[room.index];
+          return { name: entry.name, avatar: entry.avatar, location: answer?.selected ?? null, distanceKm: answer?.distanceKm };
+        });
+      }
+      if (type === 'puzzle') {
+        state.reveal.winner = room.puzzleWinner ? { name: room.puzzleWinner.name, avatar: room.puzzleWinner.avatar, elapsedMs: room.puzzleWinner.answers[room.index].elapsed } : null;
+      }
       if (room.status === 'results') {
         state.reveal.players = room.players.map((entry) => {
           const answer = entry.answers[room.index];
-          return { name: entry.name, avatar: entry.avatar, selected: answer?.selected ?? null, correct: type === 'map' ? Boolean(answer?.closest) : answer?.selected === correctAnswer, distanceKm: answer?.distanceKm, points: answer?.points || 0, score: entry.score };
+          return { name: entry.name, avatar: entry.avatar, selected: answer?.selected ?? null, correct: type === 'map' ? Boolean(answer?.closest) : type === 'puzzle' ? Boolean(answer?.completed) : answer?.selected === correctAnswer, distanceKm: answer?.distanceKm, ...(type === 'puzzle' ? { moves: entry.puzzleMoves, elapsedMs: answer?.elapsed } : {}), points: answer?.points || 0, score: entry.score };
         });
       }
     }
@@ -180,10 +235,36 @@ function api(command, body) {
     room.settings = gameSettings(body, room.settings);
     room.questions = mixedQuestions(room.settings.questionCount);
     room.options = room.questions.map(() => shuffled([0, 1, 2, 3]));
+    do { room.puzzleOrder = shuffled(Array.from({ length: 9 }, (_, index) => index)); } while (room.puzzleOrder.every((piece, index) => piece === index));
+    room.players.forEach((player) => {
+      player.puzzleBoard = [...room.puzzleOrder];
+      player.puzzleMoves = 0;
+      player.lastPuzzleMove = null;
+    });
     room.status = 'playing';
     room.index = 0;
-    room.deadline = Date.now() + room.settings.roundSeconds * 1000;
+    room.deadline = Date.now() + roundDurationSeconds(room) * 1000;
     return { ok: true };
+  }
+  if (command === 'puzzle-move') {
+    const room = getRoom(body);
+    const player = getPlayer(room, body);
+    const now = Date.now();
+    updateRound(room, now);
+    if (body.index !== room.index || room.questions[room.index]?.type !== 'puzzle') throw fail(409, 'Reconnect to the current puzzle round.');
+    if (![body.from, body.to].every((position) => Number.isInteger(position) && position >= 0 && position < 9) || body.from === body.to || !Number.isInteger(body.moveNumber) || body.moveNumber < 1) throw fail(400, 'Choose two different puzzle pieces to swap.');
+    const reply = () => ({ board: player.puzzleBoard, moves: player.puzzleMoves, status: room.status });
+    if (body.moveNumber === player.puzzleMoves && player.lastPuzzleMove?.from === body.from && player.lastPuzzleMove?.to === body.to) return reply();
+    if (room.status !== 'playing') throw fail(409, 'This puzzle round has ended. Reconnecting to the results.');
+    if (body.moveNumber !== player.puzzleMoves + 1) throw fail(409, 'Your puzzle has changed. Reconnecting to your current board.');
+    [player.puzzleBoard[body.from], player.puzzleBoard[body.to]] = [player.puzzleBoard[body.to], player.puzzleBoard[body.from]];
+    player.puzzleMoves++;
+    player.lastPuzzleMove = { from: body.from, to: body.to };
+    if (player.puzzleBoard.every((piece, index) => piece === index)) {
+      room.puzzleWinner = player;
+      updateRound(room, now);
+    }
+    return reply();
   }
   if (command === 'answer') {
     const room = getRoom(body);
@@ -192,10 +273,12 @@ function api(command, body) {
     updateRound(room, now);
     if (!Number.isInteger(body.index) || body.index < 0 || body.index >= room.settings.questionCount) throw fail(400, 'That question is not valid.');
     if (body.index !== room.index) throw fail(409, 'The host has moved to another question. Reconnecting to the live round.');
+    if (room.questions[room.index]?.type === 'puzzle') throw fail(400, 'Complete the puzzle by swapping its pieces.');
     const isMap = room.questions[room.index]?.type === 'map';
     if (isMap) {
+      const { bounds } = maps[room.questions[room.index].mapId || 'new-hampshire'];
       const point = body.location;
-      if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng) || point.lat < bounds.south || point.lat > bounds.north || point.lng < bounds.west || point.lng > bounds.east) throw fail(400, 'Place a pin within the displayed New Hampshire map.');
+      if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng) || point.lat < bounds.south || point.lat > bounds.north || point.lng < bounds.west || point.lng > bounds.east) throw fail(400, 'Place a pin within the displayed map.');
     } else if (!Number.isInteger(body.answer) || body.answer < 0 || body.answer > 3) throw fail(400, 'Choose one of the four answers.');
     if (player.answers[room.index]) return { accepted: true, selected: player.answers[room.index].selected };
     if (room.status !== 'playing') throw fail(409, 'Answers are closed. Wait for the host to start the next question.');
@@ -217,7 +300,7 @@ function api(command, body) {
     else {
       room.index++;
       room.status = 'playing';
-      room.deadline = Date.now() + room.settings.roundSeconds * 1000;
+      room.deadline = Date.now() + roundDurationSeconds(room) * 1000;
     }
     return { ok: true };
   }
@@ -236,6 +319,8 @@ const staticFiles = new Map([
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/config.js', ['config.js', 'text/javascript; charset=utf-8']],
   ['/nh-map.js', ['nh-map.js', 'text/javascript; charset=utf-8']],
+  ['/europe-map.js', ['europe-map.js', 'text/javascript; charset=utf-8']],
+  ['/maps.js', ['maps.js', 'text/javascript; charset=utf-8']],
 ]);
 for (const image of Object.values(images)) {
   if (!image.src.startsWith('/images/')) continue;

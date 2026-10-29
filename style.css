@@ -139,18 +139,38 @@ h1 { font-family: var(--display); font-size: clamp(46px, 4.7vw, 68px); font-weig
 .photo-caption { color: var(--muted); font-size: var(--text-caption); line-height: 1.7; overflow-wrap: anywhere; }
 .photo-caption a { display: inline-block; padding: 4px 0; }
 .question-media .button { margin-top: 10px; }
+.puzzle-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 4px; width: min(100%, 450px); aspect-ratio: 1; margin: 20px auto; }
+.puzzle-piece { position: relative; min-width: 0; min-height: 0; padding: 0; border: 2px solid var(--ink); border-radius: 6px; overflow: hidden; background: var(--mint); cursor: grab; }
+.puzzle-piece svg { display: block; width: 100%; height: 100%; pointer-events: none; }
+.puzzle-piece:disabled { opacity: 1; cursor: default; }
+.puzzle-piece[aria-pressed="true"], .puzzle-piece:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; box-shadow: inset 0 0 0 4px var(--white); z-index: 1; }
+.puzzle-position { position: absolute; top: 3px; left: 3px; min-width: 24px; padding: 2px 5px; border-radius: 4px; background: var(--ink); color: var(--white); font-size: var(--text-caption); pointer-events: none; }
 .map-round { margin: 22px 0; }
-.map-canvas { display: block; width: min(100%, 240px); padding: 0; margin: 0 auto; border: 2px solid #7e8b76; border-radius: 12px; background: #e6edf2; overflow: hidden; }
+.map-canvas { display: block; width: min(100%, 300px); padding: 0; margin: 0 auto; border: 2px solid #7e8b76; border-radius: 12px; background: #e6edf2; overflow: hidden; }
+.map-europe .map-canvas { width: 100%; }
 .map-canvas svg { display: block; width: 100%; height: auto; }
 button.map-canvas { cursor: crosshair; }
 .map-canvas:disabled { opacity: 1; cursor: default; }
-.map-state { fill: var(--mint); stroke: var(--green); stroke-width: 2; }
-.map-label, .map-target-label { fill: var(--ink); font-size: 15px; font-weight: 700; }
+.map-state { fill: var(--mint); stroke: var(--green); stroke-width: 1.5; }
+.map-label { fill: var(--ink); font-size: 15px; font-weight: 700; }
+.map-target-label { fill: var(--ink); font-weight: 700; }
 .map-draft { fill: var(--red); stroke: var(--white); stroke-width: 3; }
 .map-player-pin { fill: var(--green); stroke: var(--white); stroke-width: 2; }
 .map-pin-number { fill: var(--white); font-size: 11px; font-weight: 700; }
 .map-target { fill: var(--red); stroke: var(--white); stroke-width: 2; }
 .map-target-label { paint-order: stroke; stroke: var(--white); stroke-width: 4; stroke-linejoin: round; }
+.map-result-line { fill: none; stroke: var(--green); stroke-width: 2.5; }
+.map-line-animate { stroke-dasharray: 1; stroke-dashoffset: 1; animation: map-line-draw 3.2s ease-out both; }
+.map-line-delay-1 { animation-delay: .12s; }
+.map-line-delay-2 { animation-delay: .24s; }
+.map-line-delay-3 { animation-delay: .36s; }
+.map-guess-label { fill: var(--ink); font-family: var(--font); font-weight: 600; pointer-events: none; }
+.map-label-plate { fill: var(--white); stroke: var(--green); stroke-width: 1; }
+.map-label-animate { animation: map-label-appear .6s 2.7s ease-out both; }
+.map-guess-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px; padding: 0; list-style: none; font-size: var(--text-small); }
+.map-guess-list li { padding: 10px; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
+@keyframes map-line-draw { to { stroke-dashoffset: 0; } }
+@keyframes map-label-appear { from { opacity: 0; } to { opacity: 1; } }
 .map-town { width: 100%; min-height: 48px; padding: 10px; border: 1px solid #7e8b76; border-radius: 8px; background: var(--white); color: var(--ink); }
 .muted { color: var(--muted); font-size: var(--text-small); }
 .players-list { display: flex; flex-wrap: wrap; gap: 10px; padding: 0; list-style: none; margin: 20px 0; }
@@ -287,4 +307,5 @@ button.map-canvas { cursor: crosshair; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .map-line-animate { stroke-dashoffset: 0; }
 }

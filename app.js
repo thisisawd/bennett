@@ -34,6 +34,12 @@ let renderKey = '';
 let pollTimer;
 let countdownTimer;
 let imageTimer;
+let mapObserver;
+let puzzleProgress;
+let puzzleSelection = null;
+let pendingPuzzleMove = null;
+let puzzleBusy = false;
+let puzzleReady = false;
 let pollBusy = false;
 let hostBusy = false;
 let settingsBusy = false;
@@ -361,6 +367,7 @@ function resetHome() {
   clearTimeout(pollTimer);
   clearInterval(countdownTimer);
   clearTimeout(imageTimer);
+  mapObserver?.disconnect();
   saveSession(null);
   currentState = null;
   pendingAnswer = null;
@@ -419,6 +426,7 @@ async function pollState() {
 function makePanel(eyebrow, title) {
   clearInterval(countdownTimer);
   clearTimeout(imageTimer);
+  mapObserver?.disconnect();
   experience.replaceChildren();
   const panel = element('div', 'game-panel');
   panel.append(element('p', 'eyebrow', eyebrow));
@@ -433,6 +441,7 @@ function makePanel(eyebrow, title) {
 
 function renderState(state) {
   if (pendingAnswer && (pendingAnswer.index !== state.index || state.status !== 'playing' || state.player?.selected !== null)) pendingAnswer = null;
+  if (pendingPuzzleMove && (pendingPuzzleMove.index !== state.index || state.status !== 'playing')) pendingPuzzleMove = null;
   const key = `${state.role}-${state.status}-${state.index}`;
   if (key === renderKey) {
     if (state.status === 'lobby' && state.role === 'host') updateHost(state);
@@ -495,7 +504,7 @@ function renderHost(state) {
 function updateLobbyRules(state) {
   const rules = $('#lobby-rules');
   if (!rules) return;
-  const text = `${state.settings.questionCount} questions from a bank of ${state.bankSize} · ${state.settings.roundSeconds} seconds per answer. First, pin Alex’s hometown on a New Hampshire map; the rest are shuffled with no repeats. The closest pin gets 1,000 points; other pins earn less with distance. Everyone shares the same rounds. When time ends, see the answer; the host clicks Next to show player results, then Next again for the following question. Personal facts come from the host; other trivia has linked sources. Rooms expire after 6 hours; restarting the server clears games.`;
+  const text = `${state.settings.questionCount} questions from a bank of ${state.bankSize} · ${state.settings.roundSeconds} seconds per answer, except the puzzle’s fixed 30 seconds. First, pin Alex’s hometown; round 2 is the nine-piece puzzle, and round 3 is the dog photo. Shorter games stop at your chosen count. Later questions are mixed with no repeats. The first completed puzzle wins that round. Map guesses reveal at time-up with animated lines and distances in miles. The host clicks Next for player points, then Next again for the following question. Personal facts come from the host; other trivia has linked sources. Rooms expire after 6 hours; restarting the server clears games.`;
   if (rules.textContent !== text) rules.textContent = text;
 }
 
@@ -506,7 +515,7 @@ function renderGameSettings(state, panel) {
   form.noValidate = true;
   const fields = element('div', 'settings-fields');
   [
-    { id: 'round-seconds', label: 'Seconds per answer', min: 5, max: 120, value: state.settings.roundSeconds, hint: '5–120 seconds. Choose a longer round for more reading time.' },
+    { id: 'round-seconds', label: 'Seconds per answer', min: 5, max: 120, value: state.settings.roundSeconds, hint: '5–120 seconds. The puzzle always has its own 30-second limit.' },
     { id: 'question-count', label: 'Number of questions', min: 1, max: state.bankSize, value: state.settings.questionCount, hint: `1–${state.bankSize} questions. No repeats within a game.` },
   ].forEach(({ id, label: text, min, max, value, hint }) => {
     const field = element('div', 'field');
@@ -658,7 +667,7 @@ function renderQuestion(state) {
   timer.id = 'question-timer';
   timer.setAttribute('role', 'timer');
   timer.setAttribute('aria-label', 'Time remaining');
-  timer.append(element('span', 'time-value', revealing ? '0s' : `${state.settings.roundSeconds}s`));
+  timer.append(element('span', 'time-value', revealing ? '0s' : `${question.roundSeconds}s`));
   top.append(badge, score, timer);
   panel.insertBefore(top, panel.firstChild);
   const progress = element('progress', 'progress-track');
@@ -667,8 +676,9 @@ function renderQuestion(state) {
   progress.setAttribute('aria-label', 'Quiz completion');
   panel.insertBefore(progress, panel.querySelector('.eyebrow'));
   panel.append(element('p', 'question-category', question.category));
-  if (question.image?.identification) renderQuestionImage(panel, question.image);
-  if (question.type === 'map') renderMapRound(state, panel);
+  if (question.image?.identification && question.type !== 'puzzle') renderQuestionImage(panel, question.image);
+  if (question.type === 'puzzle') renderPuzzleRound(state, panel);
+  else if (question.type === 'map') renderMapRound(state, panel);
   else {
     const grid = element('div', 'answer-grid');
     question.answers.forEach((answer, index) => {
@@ -693,13 +703,13 @@ function renderQuestion(state) {
     });
     panel.append(grid);
   }
-  if (question.image && !question.image.identification) renderQuestionImage(panel, question.image);
+  if (question.image && !question.image.identification && question.type !== 'puzzle') renderQuestionImage(panel, question.image);
   if (revealing) return renderRoundReveal(state, panel);
   const status = element('p', 'muted');
   status.id = 'round-status';
   status.setAttribute('role', 'status');
   panel.append(status);
-  panel.append(element('p', 'muted', `One choice. ${state.settings.roundSeconds} seconds. No answers revealed until the clock hits zero.`));
+  panel.append(element('p', 'muted', question.type === 'puzzle' ? '30 seconds maximum. The first completed puzzle ends the round immediately.' : `One choice. ${question.roundSeconds} seconds. No answers revealed until the clock hits zero.`));
   let warned = false;
   let expired = false;
   const tick = () => {
@@ -725,6 +735,8 @@ function updateLiveRound(state) {
   const selected = state.player?.selected ?? pendingAnswer?.answer ?? null;
   const expired = performance.now() >= roundEndsAt;
   const isMap = state.question.type === 'map';
+  const isPuzzle = state.question.type === 'puzzle';
+  if (isPuzzle) updatePuzzleBoard(state);
   if (isMap) {
     const locked = state.player?.selected ?? pendingAnswer?.location;
     experience.querySelectorAll('.map-control').forEach((control) => { control.disabled = Boolean(locked) || expired; });
@@ -739,7 +751,7 @@ function updateLiveRound(state) {
   });
   const answered = state.players.filter((player) => player.answered).length;
   const hasSelection = selected !== null || (isMap && Boolean(pendingAnswer?.location));
-  const message = expired ? 'Time’s up! Revealing the answers…' : state.role === 'host' ? `${answered} of ${state.players.length} answers locked in. Everyone has the full ${state.settings.roundSeconds} seconds.` : pendingAnswer && !pendingAnswer.accepted ? 'Sending your answer… Your choice is saved here while we reconnect.' : hasSelection ? `${isMap ? 'Location' : `Answer ${'ABCD'[selected]}`} locked in. Waiting for the reveal…` : isMap ? 'Place a pin, then lock your location before the timer reaches zero.' : 'Pick your answer before the timer reaches zero.';
+  const message = expired ? 'Time’s up! Revealing the answers…' : isPuzzle ? state.role === 'host' ? 'Players are solving their own boards. First to finish wins; the limit is 30 seconds.' : `${puzzleProgress?.moves || 0} swaps saved. First to finish wins.` : state.role === 'host' ? `${answered} of ${state.players.length} answers locked in. Everyone has the full ${state.question.roundSeconds} seconds.` : pendingAnswer && !pendingAnswer.accepted ? 'Sending your answer… Your choice is saved here while we reconnect.' : hasSelection ? `${isMap ? 'Location' : `Answer ${'ABCD'[selected]}`} locked in. Waiting for the reveal…` : isMap ? 'Place a pin, then lock your location before the timer reaches zero.' : 'Pick your answer before the timer reaches zero.';
   if ($('#round-status') && $('#round-status').textContent !== message) $('#round-status').textContent = message;
 }
 
@@ -747,7 +759,9 @@ function renderRoundReveal(state, panel) {
   const reveal = state.reveal;
   const feedback = element('div', 'answer-feedback');
   const isMap = state.question.type === 'map';
-  feedback.append(element('h2', '', isMap ? 'Time’s up. Here’s the town!' : 'Time’s up. Here’s the answer!'), element('p', '', reveal.explanation));
+  const isPuzzle = state.question.type === 'puzzle';
+  const puzzleResult = isPuzzle ? reveal.winner ? `${avatars[reveal.winner.avatar].emoji} ${reveal.winner.name} finished first in ${(reveal.winner.elapsedMs / 1000).toFixed(1)} seconds!` : 'Time’s up. Nobody completed the puzzle.' : '';
+  feedback.append(element('h2', '', isPuzzle ? puzzleResult : isMap ? 'Time’s up. Here’s the place!' : 'Time’s up. Here’s the answer!'), element('p', '', reveal.explanation));
   const source = element(reveal.source.url ? 'a' : 'p', 'source-link', `Source: ${reveal.source.label}`);
   if (reveal.source.url) {
     source.href = reveal.source.url;
@@ -765,30 +779,31 @@ function renderRoundReveal(state, panel) {
   } else {
     panel.append(element('p', 'muted', 'The host will show everyone’s results next.'));
   }
-  announce(isMap ? `Time is up. Alex came from ${reveal.target.name}. The host will show player results next.` : `Time is up. Correct answer: ${state.question.answers[reveal.correctAnswer]}. The host will show player results next.`);
+  announce(isPuzzle ? `${puzzleResult} The host will show player points next.` : isMap ? `Time is up. Correct location: ${reveal.target.name}. Player guesses and distances in miles are listed below the map. The host will show points next.` : `Time is up. Correct answer: ${state.question.answers[reveal.correctAnswer]}. The host will show player results next.`);
   playTone('reveal');
 }
 
 function renderRoundResults(state) {
   const reveal = state.reveal;
   const isMap = state.question.type === 'map';
-  const panel = makePanel(`ROUND ${state.index + 1} OF ${state.total} · SCORE CHECK`, isMap ? 'Who got closest?' : 'Who got it right?');
+  const isPuzzle = state.question.type === 'puzzle';
+  const panel = makePanel(`ROUND ${state.index + 1} OF ${state.total} · SCORE CHECK`, isPuzzle ? 'Who finished first?' : isMap ? 'Who got closest?' : 'Who got it right?');
   panel.classList.add('round-results-panel');
   const emblem = element('div', 'results-emblem', isMap ? '🎯' : '📊');
   emblem.setAttribute('aria-hidden', 'true');
   panel.append(emblem);
   const correctCount = reveal.players.filter((player) => player.correct).length;
   const answered = reveal.players.filter((player) => player.selected !== null).length;
-  const summary = isMap ? answered ? `${correctCount} closest ${correctCount === 1 ? 'pin' : 'pins'} · ${answered} ${answered === 1 ? 'location' : 'locations'} locked in.` : 'No pins submitted. Zero points this round.' : `${correctCount} of ${reveal.players.length} got it right.`;
+  const summary = isPuzzle ? reveal.winner ? `${avatars[reveal.winner.avatar].emoji} ${reveal.winner.name} wins the puzzle round!` : 'No completed puzzle. Zero points this round.' : isMap ? answered ? `${correctCount} closest ${correctCount === 1 ? 'pin' : 'pins'} · ${answered} ${answered === 1 ? 'location' : 'locations'} locked in.` : 'No pins submitted. Zero points this round.' : `${correctCount} of ${reveal.players.length} got it right.`;
   panel.append(element('p', 'results-summary', summary));
-  panel.append(element('p', 'muted', isMap ? `Correct town: ${reveal.target.name}.` : `Correct answer: ${state.question.answers[reveal.correctAnswer]}.`));
+  panel.append(element('p', 'muted', isPuzzle ? 'The first completed board earns 1,000 points; other players receive zero.' : isMap ? `Correct location: ${reveal.target.name}.` : `Correct answer: ${state.question.answers[reveal.correctAnswer]}.`));
   if (isMap) renderMapRound(state, panel);
   const list = element('ul', 'round-results');
   reveal.players.forEach((player, index) => {
     const row = element('li', `round-result${player.correct ? ' round-correct' : ''}`);
     const isYou = player.name === state.player?.name;
     if (isYou) row.classList.add('round-is-you');
-    const outcome = player.selected === null ? 'No answer' : isMap ? `${player.distanceKm.toFixed(1)} km away${player.correct ? ' · Closest ✓' : ''}` : `${player.correct ? 'Correct ✓' : 'Incorrect'} · ${'ABCD'[player.selected]}: ${state.question.answers[player.selected]}`;
+    const outcome = isPuzzle ? `${player.correct ? `Winner ✓ · ${(player.elapsedMs / 1000).toFixed(1)} seconds` : 'Not completed'} · ${player.moves} swaps` : player.selected === null ? 'No answer' : isMap ? `${formatMiles(player.distanceKm)} away${player.correct ? ' · Closest ✓' : ''}` : `${player.correct ? 'Correct ✓' : 'Incorrect'} · ${'ABCD'[player.selected]}: ${state.question.answers[player.selected]}`;
     row.append(element('span', 'round-player', `${isMap ? `#${index + 1} ` : ''}${avatars[player.avatar].emoji} ${player.name}${isYou ? ' (you)' : ''}`), element('span', '', outcome), element('span', 'round-score-points', `+${player.points} points · ${player.score.toLocaleString()} total`));
     list.append(row);
   });
@@ -805,23 +820,221 @@ function renderRoundResults(state) {
   playTone(state.role === 'player' && !gotIt ? 'wrong' : 'correct');
 }
 
-function mapPosition(point) {
-  const { bounds, width, height } = window.BENNETT_MAP;
+const puzzleDescriptions = [
+  'Arena banners, upper seating, and the basketball hoop',
+  'Arena lights and stands beside the edge of a person’s hair',
+  'A person’s hair, glasses, and upper face',
+  'Players and basketball court behind spectators',
+  'Court beside the left shoulder of a striped shirt',
+  'A smiling lower face and upper striped shirt',
+  'Rows of dark courtside seats',
+  'A striped sleeve beside dark courtside seats',
+  'The lower part of a striped shirt',
+];
+
+function renderPuzzleRound(state, panel) {
+  if (state.status !== 'playing') {
+    renderQuestionImage(panel, state.question.image);
+    return;
+  }
+  if (state.role === 'host') {
+    panel.append(element('p', 'rules-box', 'Puzzle race! Everyone has the same shuffled photo in nine square pieces. Players drag pieces or select two to swap them. First to finish wins. This round always lasts at most 30 seconds.'));
+    return;
+  }
+  puzzleProgress = { index: state.index, board: [...state.question.board], moves: state.question.moves };
+  puzzleSelection = null;
+  puzzleReady = false;
+  const help = element('p', 'muted', 'Put the photo back together. Drag one piece onto another, or select two pieces to swap them. Keyboard: Tab between pieces and press Enter or Space to select. All nine pieces are square; the photo is cropped to a square. First to finish wins!');
+  help.id = 'puzzle-help';
+  const notice = element('p', 'muted', 'Loading puzzle photo… Your 30-second timer is running.');
+  notice.id = 'puzzle-photo-status';
+  notice.setAttribute('role', 'status');
+  const board = element('div', 'puzzle-board');
+  board.id = 'puzzle-board';
+  board.setAttribute('role', 'group');
+  board.setAttribute('aria-label', 'Nine-piece photo puzzle');
+  board.setAttribute('aria-describedby', 'puzzle-help puzzle-status');
+  board.setAttribute('aria-busy', 'true');
+  const status = element('p', 'muted', 'Select a piece, then select another to swap them.');
+  status.id = 'puzzle-status';
+  status.setAttribute('role', 'status');
+  const photoParts = [];
+  const loaded = new Set();
+  const failed = () => {
+    if (!board.isConnected) return;
+    clearTimeout(imageTimer);
+    puzzleReady = false;
+    board.setAttribute('aria-busy', 'false');
+    notice.textContent = 'The puzzle photo could not load. Retry to keep your saved board. The round timer continues.';
+    if (!$('#puzzle-photo-retry')) {
+      const retry = action('Retry puzzle photo', load);
+      retry.id = 'puzzle-photo-retry';
+      panel.append(retry);
+    }
+    updatePuzzleBoard(currentState);
+  };
+  const load = () => {
+    clearTimeout(imageTimer);
+    loaded.clear();
+    puzzleReady = false;
+    board.setAttribute('aria-busy', 'true');
+    notice.textContent = 'Loading puzzle photo… Your 30-second timer is running.';
+    const url = new URL(state.question.image.src, window.BENNETT_API_ORIGIN || location.origin).href;
+    photoParts.forEach((image) => {
+      image.removeAttribute('href');
+      image.setAttribute('href', url);
+    });
+    imageTimer = setTimeout(failed, 7000);
+    updatePuzzleBoard(currentState);
+  };
+  state.question.board.forEach((piece, index) => {
+    const button = element('button', 'puzzle-piece');
+    button.type = 'button';
+    button.dataset.position = index;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    Object.entries({ x: 0, y: 0, width: 3, height: 3, preserveAspectRatio: 'xMidYMid slice' }).forEach(([key, value]) => image.setAttribute(key, value));
+    image.addEventListener('load', () => {
+      if (!board.isConnected) return;
+      loaded.add(index);
+      if (loaded.size !== 9) return;
+      clearTimeout(imageTimer);
+      puzzleReady = true;
+      board.setAttribute('aria-busy', 'false');
+      notice.textContent = 'Photo loaded. Swap pieces to complete the picture.';
+      $('#puzzle-photo-retry')?.remove();
+      updatePuzzleBoard(currentState);
+    });
+    image.addEventListener('error', failed);
+    photoParts.push(image);
+    svg.append(image);
+    button.append(svg, element('span', 'puzzle-position', String(index + 1)));
+    button.addEventListener('click', () => selectPuzzlePiece(index));
+    button.addEventListener('dragstart', (event) => {
+      if (button.disabled) return event.preventDefault();
+      puzzleSelection = index;
+      event.dataTransfer.setData('text/plain', String(index));
+      event.dataTransfer.effectAllowed = 'move';
+      updatePuzzleBoard(currentState);
+    });
+    button.addEventListener('dragover', (event) => {
+      if (!button.disabled && puzzleSelection !== null) event.preventDefault();
+    });
+    button.addEventListener('drop', (event) => {
+      event.preventDefault();
+      selectPuzzlePiece(index);
+    });
+    board.append(button);
+  });
+  panel.append(help, notice, board, status);
+  load();
+}
+
+function updatePuzzleBoard(state) {
+  if (state?.question.type !== 'puzzle' || !puzzleProgress || puzzleProgress.index !== state.index) return;
+  if (state.question.moves >= puzzleProgress.moves) {
+    puzzleProgress.board = [...state.question.board];
+    puzzleProgress.moves = state.question.moves;
+  }
+  if (pendingPuzzleMove && puzzleProgress.moves >= pendingPuzzleMove.moveNumber) {
+    pendingPuzzleMove = null;
+    puzzleSelection = null;
+    $('#puzzle-error')?.remove();
+    $('#puzzle-move-retry')?.remove();
+  }
+  const blocked = state.status !== 'playing' || performance.now() >= roundEndsAt || !puzzleReady || puzzleBusy || Boolean(pendingPuzzleMove);
+  experience.querySelectorAll('.puzzle-piece').forEach((button, index) => {
+    const piece = puzzleProgress.board[index];
+    button.disabled = blocked;
+    button.draggable = !blocked;
+    button.setAttribute('aria-pressed', String(puzzleSelection === index));
+    button.setAttribute('aria-label', `Position ${index + 1}, row ${Math.floor(index / 3) + 1}, column ${index % 3 + 1}: ${puzzleDescriptions[piece]}.`);
+    button.querySelector('svg').setAttribute('viewBox', `${piece % 3} ${Math.floor(piece / 3)} 1 1`);
+  });
+}
+
+function selectPuzzlePiece(index) {
+  if (currentState?.status !== 'playing' || currentState.question.type !== 'puzzle' || !puzzleReady || puzzleBusy || pendingPuzzleMove || performance.now() >= roundEndsAt) return;
+  if (puzzleSelection === null) {
+    puzzleSelection = index;
+    $('#puzzle-status').textContent = `Position ${index + 1} selected. Select a different piece to swap, or select this piece again to cancel.`;
+    return updatePuzzleBoard(currentState);
+  }
+  if (puzzleSelection === index) {
+    puzzleSelection = null;
+    $('#puzzle-status').textContent = 'Selection cancelled. Select a piece to start a swap.';
+    return updatePuzzleBoard(currentState);
+  }
+  pendingPuzzleMove = { index: currentState.index, from: puzzleSelection, to: index, moveNumber: puzzleProgress.moves + 1 };
+  sendPuzzleMove();
+}
+
+async function sendPuzzleMove() {
+  if (!pendingPuzzleMove || puzzleBusy) return;
+  const move = pendingPuzzleMove;
+  const moveSession = session;
+  puzzleBusy = true;
+  $('#puzzle-status').textContent = 'Saving your swap…';
+  updatePuzzleBoard(currentState);
+  try {
+    const result = await request('puzzle-move', { ...moveSession, ...move });
+    if (session !== moveSession || currentState?.index !== move.index || currentState.status !== 'playing') return;
+    if (result.moves >= puzzleProgress.moves) puzzleProgress = { index: move.index, board: result.board, moves: result.moves };
+    pendingPuzzleMove = null;
+    puzzleSelection = null;
+    $('#puzzle-error')?.remove();
+    $('#puzzle-move-retry')?.remove();
+    $('#puzzle-status').textContent = 'Swap saved. Select the next two pieces.';
+    playTone('tap');
+    if (result.status !== 'playing') await pollState();
+  } catch (error) {
+    if (session !== moveSession || currentState?.index !== move.index || currentState.status !== 'playing' || puzzleProgress.moves >= move.moveNumber) return;
+    if (error.status === 409) {
+      pendingPuzzleMove = null;
+      puzzleSelection = null;
+      return pollState();
+    }
+    let message = $('#puzzle-error');
+    if (!message) {
+      message = element('p', 'form-error');
+      message.id = 'puzzle-error';
+      message.setAttribute('role', 'alert');
+      experience.querySelector('.game-panel').append(message);
+      const retry = action('Retry saved swap', sendPuzzleMove);
+      retry.id = 'puzzle-move-retry';
+      experience.querySelector('.game-panel').append(retry);
+    }
+    message.textContent = `Your swap could not be confirmed. ${error.message} Your board and pending swap are saved; retry before the timer ends.`;
+  } finally {
+    puzzleBusy = false;
+    updateLiveRound(currentState);
+  }
+}
+
+function formatMiles(distanceKm) {
+  return `${(distanceKm / 1.609344).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} miles`;
+}
+
+function mapPosition(point, data) {
+  const { bounds, width, height } = data;
   return { x: (point.lng - bounds.west) / (bounds.east - bounds.west) * width, y: (bounds.north - point.lat) / (bounds.north - bounds.south) * height };
 }
 
 function positionMapPin(point) {
   const marker = $('#map-guess-marker');
-  if (!marker || !window.BENNETT_MAP) return;
-  const { x, y } = mapPosition(point);
+  const data = window.BENNETT_MAPS?.[currentState?.question.mapId || 'new-hampshire'];
+  if (!marker || !data) return;
+  const { x, y } = mapPosition(point, data);
   marker.setAttribute('cx', x);
   marker.setAttribute('cy', y);
   marker.classList.remove('hidden');
 }
 
 function renderMapRound(state, panel) {
-  const data = window.BENNETT_MAP;
-  if (!data) {
+  const data = window.BENNETT_MAPS?.[state.question.mapId || 'new-hampshire'];
+  if (!data?.outlines?.length) {
     panel.append(element('p', 'form-error', 'The map could not load. Reload the page to reconnect; the game timer will keep running.'));
     panel.append(action('Reload game', () => location.reload()));
     return;
@@ -834,13 +1047,13 @@ function renderMapRound(state, panel) {
     Object.entries(attributes).forEach(([name, value]) => node.setAttribute(name, value));
     return node;
   };
-  const area = element('div', 'map-round');
+  const area = element('div', `map-round${state.question.mapId === 'europe' ? ' map-europe' : ''}`);
   const canvas = element(interactive ? 'button' : 'div', `map-canvas${interactive ? ' map-control' : ''}`);
-  const svg = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': state.status === 'results' ? 'Map of New Hampshire with the correct town and numbered player guesses. Distances are listed in the results.' : revealing ? 'Map of New Hampshire with the correct town marked by a square.' : 'Outline map of New Hampshire, with north at the top.' });
-  svg.append(svgNode('polygon', { points: data.outline.map(([lng, lat]) => {
-    const { x, y } = mapPosition({ lat, lng });
+  const svg = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': revealing ? `Map of ${data.name} with the correct location and player guesses. Names and distances in miles are listed below.` : `Unlabelled map of ${data.name}, with north at the top.` });
+  data.outlines.forEach((outline) => svg.append(svgNode('polygon', { points: outline.map(([lng, lat]) => {
+    const { x, y } = mapPosition({ lat, lng }, data);
     return `${x},${y}`;
-  }).join(' '), class: 'map-state' }));
+  }).join(' '), class: 'map-state', 'vector-effect': 'non-scaling-stroke' })));
   const north = svgNode('text', { x: 24, y: 30, class: 'map-label' });
   north.textContent = 'N ↑';
   svg.append(north);
@@ -853,33 +1066,20 @@ function renderMapRound(state, panel) {
   area.append(credit);
   panel.append(area);
   if (revealing) {
-    (state.reveal.players || []).forEach((player, index) => {
-      if (!player.selected) return;
-      const { x, y } = mapPosition(player.selected);
-      svg.append(svgNode('circle', { cx: x, cy: y, r: 10, class: 'map-player-pin' }));
-      const label = svgNode('text', { x, y: y + 4, 'text-anchor': 'middle', class: 'map-pin-number' });
-      label.textContent = String(index + 1);
-      svg.append(label);
-    });
-    const { x, y } = mapPosition(state.reveal.target);
-    svg.append(svgNode('rect', { x: x - 6, y: y - 6, width: 12, height: 12, class: 'map-target' }));
-    const target = svgNode('text', { x: x + 10, y: y - 12, class: 'map-target-label' });
-    target.textContent = state.reveal.target.name;
-    svg.append(target);
-    area.append(element('p', 'muted', state.status === 'results' ? 'The square marks the correct town. Numbered circles match the player results below.' : 'The square marks the correct town. Player pins and distances appear on the next screen.'));
+    renderMapGuesses(state, svg, area, data, svgNode);
     return;
   }
   if (!interactive) {
-    area.append(element('p', 'muted', 'Players place their pins on their own devices. Guesses and the correct town appear only after the timer ends.'));
+    area.append(element('p', 'muted', 'Players place their pins on their own devices. Guesses and the correct location appear only after the timer ends.'));
     return;
   }
   mapDraft = state.player.selected || null;
   const marker = svgNode('circle', { id: 'map-guess-marker', cx: 0, cy: 0, r: 7, class: 'map-draft hidden' });
   svg.append(marker);
   canvas.type = 'button';
-  canvas.setAttribute('aria-label', 'Place your hometown guess on the New Hampshire map');
+  canvas.setAttribute('aria-label', `Place your guess on the ${data.name} map`);
   canvas.setAttribute('aria-describedby', 'map-help map-pin-status');
-  const help = element('p', 'muted', 'Click or tap to place a pin. Keyboard: focus the map, use arrow keys to move, Shift + arrows for bigger steps, and Enter or Space to place the center pin. You can also choose a town below. Then lock your location.');
+  const help = element('p', 'muted', `Click or tap to place a pin. Keyboard: focus the map, use arrow keys to move, Shift + arrows for bigger steps, and Enter or Space to place the center pin. You can also choose a ${data.place} below. Then lock your location.`);
   help.id = 'map-help';
   area.append(help);
   const pinStatus = element('p', 'muted', 'No pin placed yet.');
@@ -887,11 +1087,11 @@ function renderMapRound(state, panel) {
   pinStatus.setAttribute('role', 'status');
   area.append(pinStatus);
   const field = element('div', 'field');
-  const label = element('label', '', 'Jump to a town (optional)');
+  const label = element('label', '', `Jump to a ${data.place} (optional)`);
   label.htmlFor = 'map-town';
   const towns = element('select', 'map-control map-town');
   towns.id = 'map-town';
-  const empty = element('option', '', 'Choose a town or use the map');
+  const empty = element('option', '', `Choose a ${data.place} or use the map`);
   empty.value = '';
   towns.append(empty);
   data.towns.forEach((town, index) => {
@@ -914,7 +1114,7 @@ function renderMapRound(state, panel) {
     mapDraft = { lat: Math.max(bounds.south, Math.min(bounds.north, point.lat)), lng: Math.max(bounds.west, Math.min(bounds.east, point.lng)) };
     positionMapPin(mapDraft);
     towns.value = town;
-    pinStatus.textContent = `Pin at ${mapDraft.lat.toFixed(3)}° N, ${Math.abs(mapDraft.lng).toFixed(3)}° W. Choose Lock this location to submit.`;
+    pinStatus.textContent = `Pin at ${Math.abs(mapDraft.lat).toFixed(3)}° ${mapDraft.lat < 0 ? 'S' : 'N'}, ${Math.abs(mapDraft.lng).toFixed(3)}° ${mapDraft.lng < 0 ? 'W' : 'E'}. Choose Lock this location to submit.`;
     confirm.disabled = false;
   };
   canvas.addEventListener('click', (event) => {
@@ -925,7 +1125,7 @@ function renderMapRound(state, panel) {
   canvas.addEventListener('keydown', (event) => {
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     event.preventDefault();
-    const step = event.shiftKey ? .1 : .01;
+    const step = data.step * (event.shiftKey ? 10 : 1);
     const point = mapDraft || center;
     place({ lat: point.lat + (event.key === 'ArrowUp' ? step : event.key === 'ArrowDown' ? -step : 0), lng: point.lng + (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0) });
   });
@@ -938,6 +1138,65 @@ function renderMapRound(state, panel) {
   }
 }
 
+function renderMapGuesses(state, svg, area, data, svgNode) {
+  const targetPoint = mapPosition(state.reveal.target, data);
+  const labels = [];
+  const guesses = state.reveal.guesses || [];
+  const legend = element('ul', 'map-guess-list');
+  guesses.forEach((player, index) => {
+    const avatar = avatars[player.avatar]?.emoji || '🙂';
+    const row = element('li', '', `#${index + 1} ${avatar} ${player.name} — ${player.location ? `${formatMiles(player.distanceKm)} away` : 'No pin submitted'}`);
+    legend.append(row);
+    if (!player.location) return;
+    const point = mapPosition(player.location, data);
+    svg.append(svgNode('path', { d: `M${targetPoint.x},${targetPoint.y} L${point.x},${point.y}`, pathLength: 1, class: `map-result-line${state.status === 'reveal' ? ` map-line-animate map-line-delay-${index % 4}` : ''}`, 'vector-effect': 'non-scaling-stroke' }));
+    const pin = svgNode('circle', { cx: point.x, cy: point.y, r: 6, class: 'map-player-pin', 'vector-effect': 'non-scaling-stroke' });
+    const label = svgNode('g', { class: `map-guess-label${state.status === 'reveal' ? ' map-label-animate' : ''}` });
+    const plate = svgNode('rect', { rx: 5, class: 'map-label-plate', 'vector-effect': 'non-scaling-stroke' });
+    const name = [...player.name];
+    const lines = [`${avatar} ${name.slice(0, 12).join('')}`, ...(name.length > 12 ? [name.slice(12).join('')] : []), formatMiles(player.distanceKm)];
+    const texts = lines.map((line) => {
+      const text = svgNode('text', {});
+      text.textContent = line;
+      return text;
+    });
+    label.append(plate, ...texts);
+    svg.append(pin, label);
+    labels.push({ point, pin, plate, texts });
+  });
+  const target = svgNode('rect', { class: 'map-target', 'vector-effect': 'non-scaling-stroke' });
+  const targetLabel = svgNode('text', { class: 'map-target-label' });
+  targetLabel.textContent = state.reveal.target.name;
+  svg.append(target, targetLabel);
+  const layout = () => {
+    const renderedWidth = svg.getBoundingClientRect().width || data.width;
+    const scale = data.width / renderedWidth;
+    const labelWidth = Math.min(data.width, 148 * scale);
+    labels.forEach(({ point, pin, plate, texts }) => {
+      const labelHeight = (texts.length * 18 + 10) * scale;
+      const x = Math.max(0, Math.min(data.width - labelWidth, point.x + 8 * scale));
+      const y = Math.max(0, Math.min(data.height - labelHeight, point.y + 10 * scale));
+      pin.setAttribute('r', 5 * scale);
+      Object.entries({ x, y, width: labelWidth, height: labelHeight }).forEach(([key, value]) => plate.setAttribute(key, value));
+      texts.forEach((text, index) => {
+        Object.entries({ x: x + 7 * scale, y: y + (19 + index * 18) * scale, 'font-size': 14 * scale }).forEach(([key, value]) => text.setAttribute(key, value));
+      });
+    });
+    Object.entries({ x: targetPoint.x - 6 * scale, y: targetPoint.y - 6 * scale, width: 12 * scale, height: 12 * scale }).forEach(([key, value]) => target.setAttribute(key, value));
+    targetLabel.setAttribute('x', Math.max(6 * scale, Math.min(data.width - state.reveal.target.name.length * 8 * scale, targetPoint.x + 10 * scale)));
+    targetLabel.setAttribute('y', Math.max(20 * scale, targetPoint.y - 14 * scale));
+    targetLabel.setAttribute('font-size', 14 * scale);
+  };
+  layout();
+  if (typeof ResizeObserver !== 'undefined') {
+    mapObserver = new ResizeObserver(layout);
+    mapObserver.observe(svg);
+  }
+  area.append(element('p', 'muted', `The square marks ${state.reveal.target.name}. Lines connect it to each submitted pin. Overlapping labels? Every name and distance is also listed below.`));
+  if (!guesses.some((player) => player.location)) area.append(element('p', 'muted', 'No pins were submitted this round.'));
+  if (state.status === 'reveal') area.append(legend);
+}
+
 function renderQuestionImage(panel, data) {
   const figure = element('figure', 'question-media');
   const image = element('img', 'question-photo hidden');
@@ -947,8 +1206,8 @@ function renderQuestionImage(panel, data) {
   status.setAttribute('role', 'status');
   const caption = element('figcaption', 'photo-caption');
   caption.append(element('span', '', `${data.caption} Photo: ${data.author}. `));
-  const original = element('a', '', data.sourceLabel || 'Wikimedia Commons source');
-  original.href = data.source;
+  const original = element(data.source ? 'a' : 'span', '', data.sourceLabel || 'Wikimedia Commons source');
+  if (data.source) original.href = data.source;
   caption.append(original, element('span', '', ' · '));
   const license = element(data.licenseUrl ? 'a' : 'span', '', data.license);
   if (data.licenseUrl) license.href = data.licenseUrl;
@@ -1042,7 +1301,7 @@ function renderResults(state) {
     list.append(row);
   });
   panel.append(list);
-  panel.append(element('p', 'muted', 'The closest map pin earns 1,000 points; other map scores decrease with extra distance. Multiple-choice answers earn 600–1,000 points based on speed. Equal scores share a place. Personal facts are supplied by the host; other trivia has linked sources. Illustrative photos are not family photos or proof of product authorship.'));
+  panel.append(element('p', 'muted', 'The closest map pin earns 1,000 points; other map scores decrease with extra distance. The first puzzle finisher wins 1,000 points; other players receive zero for that round. Multiple-choice answers earn 600–1,000 points based on speed. Equal scores share a place. Personal facts and personal photos are supplied by the host; other trivia has linked sources. Illustrative stock photos are labelled and are not family photos or proof of product authorship.'));
   panel.append(action('Back to the lobby ↗', resetHome, true));
   playTone('win');
   announce(winners.length > 1 ? 'The results are in. It is a tie!' : `The results are in. ${leaders[0]?.name} wins!`);
